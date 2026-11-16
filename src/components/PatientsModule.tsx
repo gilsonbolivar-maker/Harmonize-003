@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Patient, FaceMapPoint, AnamnesisData, ClinicalRecord } from '../types';
 import { FaceMapStudio } from './FaceMapStudio';
+import { IA_ATIVA } from '../lib/config';
 import {
   Search, Plus, User, Phone, Mail, Calendar, MapPin, AlertTriangle,
   FileCheck, ShieldAlert, Sparkles, Check, ChevronRight, MessageSquare,
@@ -394,7 +395,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
             {activeTab === 'anamnese' && (
               <div className="space-y-6">
                 {/* AI Risk Safety Checker Card in Sleek Dark Accent */}
-                <div className="bg-[#112233] text-white p-6 rounded-3xl shadow-xs border border-[#20364F]">
+                {IA_ATIVA && <div className="bg-[#112233] text-white p-6 rounded-3xl shadow-xs border border-[#20364F]">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 text-[#90CDF4] text-[10px] font-bold uppercase tracking-[0.2em]">
@@ -444,7 +445,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                       )}
                     </div>
                   )}
-                </div>
+                </div>}
 
                 {/* Anamnesis Fields Grid */}
                 <div className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs space-y-6">

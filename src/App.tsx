@@ -11,7 +11,7 @@ import { FinancialModule } from './components/FinancialModule';
 import { AiAssistantModule } from './components/AiAssistantModule';
 import { FaceMapStudio } from './components/FaceMapStudio';
 import { Entrar } from './components/Entrar';
-import { CLINICA, CORES } from './lib/config';
+import { CLINICA, CORES, IA_ATIVA } from './lib/config';
 import { hojeISO } from './lib/datas';
 import { supabase } from './lib/supabase';
 import {
@@ -139,6 +139,7 @@ export default function App() {
 
   useEffect(() => {
     if (!dentista && activeModule !== 'appointments') setActiveModule('appointments');
+    else if (!IA_ATIVA && activeModule === 'ai_assistant') setActiveModule('appointments');
   }, [dentista, activeModule]);
 
   const avisar = (e: unknown) => {
@@ -258,7 +259,7 @@ export default function App() {
       { id: 'inventory' as NavModule, label: 'Estoque', sublabel: 'Injetáveis', icon: Package },
       { id: 'procedures' as NavModule, label: 'Procedimentos', sublabel: '13 serviços e durações', icon: FileText },
       { id: 'financial' as NavModule, label: 'Financeiro', sublabel: 'O que a Jimena registrar', icon: DollarSign },
-      { id: 'ai_assistant' as NavModule, label: 'Assistente', sublabel: 'Pós-cuidado', icon: Sparkles },
+      ...(IA_ATIVA ? [{ id: 'ai_assistant' as NavModule, label: 'Assistente', sublabel: 'Pós-cuidado', icon: Sparkles }] : []),
       { id: 'dashboard' as NavModule, label: 'Visão geral', sublabel: 'Resumo do dia', icon: Sparkles },
     ] : []),
   ];
@@ -438,7 +439,7 @@ export default function App() {
                 />
               )}
 
-              {activeModule === 'ai_assistant' && dentista && (
+              {IA_ATIVA && activeModule === 'ai_assistant' && dentista && (
                 <AiAssistantModule patients={patients} procedures={procedures} />
               )}
             </>
