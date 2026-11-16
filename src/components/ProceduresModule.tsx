@@ -24,10 +24,7 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
 
   // Budget Builder State
   const [budgetPatientId, setBudgetPatientId] = useState<string>(patients[0]?.id || '');
-  const [selectedBudgetProcs, setSelectedBudgetProcs] = useState<{ procId: string; qty: number }[]>([
-    { procId: 'proc-botox-full', qty: 1 },
-    { procId: 'proc-preench-labial', qty: 1 }
-  ]);
+  const [selectedBudgetProcs, setSelectedBudgetProcs] = useState<{ procId: string; qty: number }[]>([]);
   const [discountPercent, setDiscountPercent] = useState<number>(10);
   const [installments, setInstallments] = useState<number>(6);
 
@@ -40,8 +37,8 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
   const [formData, setFormData] = useState<Partial<ProcedureCatalogItem>>({
     name: '',
     category: 'harmonizacao',
-    defaultPrice: 1800,
-    costPrice: 500,
+    defaultPrice: 0,
+    costPrice: 0,
     durationMinutes: 45,
     recommendedRetouchDays: 15,
     description: '',
@@ -103,10 +100,10 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
     const pat = patients.find(p => p.id === budgetPatientId);
     const procListText = selectedBudgetProcs.map(item => {
       const proc = procedures.find(p => p.id === item.procId);
-      return `• ${item.qty}x ${proc?.name || 'Procedimento'} - R$ ${(proc?.defaultPrice || 0) * item.qty}`;
+      return `• ${item.qty}x ${proc?.name || 'Procedimento'} (${proc?.durationMinutes || 0} min)`;
     }).join('\n');
 
-    return `✨ *Plano de Tratamento Personalizado de Harmonização Facial* ✨\n\nOlá, *${pat?.name || 'Querida(o) Paciente'}*!\nConforme nossa avaliação clínica, preparamos uma proposta exclusiva para alcançar seus objetivos com naturalidade e segurança:\n\n📋 *Procedimentos Inclusos:*\n${procListText || '• Avaliação e Planejamento Facial Individualizado'}\n\n💵 *Subtotal:* R$ ${budgetSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n🎁 *Condição Especial (${discountPercent}% OFF no Pacote):* R$ ${budgetFinalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n💳 *Facilidade:* Em até ${installments}x sem juros de *R$ ${installmentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n\n🗓️ *Todos os retoques de 15 dias e pós-atendimento estão inclusos.*\n\nFicamos à disposição para agendarmos sua transformação! 💜\n*Harmonize Clinical*`;
+    return `Olá, ${pat?.name || ''}! Segue o que conversamos na ${'Jimena Andrade'} — Harmonização Orofacial:\n\n${procListText || '• Ainda sem procedimento escolhido'}\n\nA duração de cada um ocupa a agenda. Valores não ficam pré-cadastrados.\n\nAvenida Santana, 328 — Caetité — BA`;
   };
 
   const handleCopyBudgetWhatsApp = async (textToCopy?: string) => {
@@ -151,32 +148,23 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
       <div className="bg-[#112233] text-white p-7 rounded-3xl shadow-sm border border-[#CBD5E1]/20">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="max-w-xl">
-            <div className="flex items-center gap-2 text-[#64748B] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">
-              <Calculator className="w-3.5 h-3.5 text-[#2563EB]" />
-              Simulador de Planos de Harmonização Facial
+            <div className="flex items-center gap-2 text-[#E8D8C3] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">
+              <Calculator className="w-3.5 h-3.5" />
+              Procedimentos da clínica
             </div>
             <h3 className="font-serif italic text-2xl text-white">
-              Orçamento de Harmonização & Combos Full Face
+              Os 13 serviços e a duração na agenda
             </h3>
-            <p className="text-xs text-[#64748B] mt-1 font-light">
-              Selecione os procedimentos abaixo para calcular pacotes com desconto, parcelamento e gerar proposta direta para WhatsApp.
+            <p className="text-xs text-[#E8D8C3] mt-1 font-light">
+              Estética e Odontologia, sem valores pré-cadastrados. A duração impede marcar um horário por cima do outro.
             </p>
           </div>
 
           <div className="w-full lg:w-auto flex flex-wrap items-center gap-3 bg-white/5 backdrop-blur-xs p-4 sm:p-5 rounded-2xl border border-white/10">
             <div>
-              <span className="text-[10px] text-[#94A3B8] font-semibold uppercase tracking-wider block">Valor Final do Pacote</span>
-              <span className="text-2xl font-serif italic text-white font-bold">
-                R$ {budgetFinalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            <div className="h-8 w-px bg-white/20 hidden sm:block mx-1" />
-
-            <div>
-              <span className="text-[10px] text-[#94A3B8] font-semibold uppercase tracking-wider block">Condição de Pagamento</span>
-              <span className="text-xs font-semibold text-white">
-                {installments}x de R$ {installmentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              <span className="text-[10px] text-[#E8D8C3] font-semibold uppercase tracking-wider block">Proposta</span>
+              <span className="text-sm text-white">
+                Sem preço. A Jimena informa o valor se quiser.
               </span>
             </div>
 
@@ -260,31 +248,10 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
             </select>
           </div>
 
-          <div>
-            <label className="text-[#64748B] block mb-1.5 font-medium">Desconto de Pacote (%):</label>
-            <input
-              type="number"
-              min="0"
-              max="40"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(Number(e.target.value))}
-              className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-2xl text-white font-semibold outline-none focus:border-[#2563EB]"
-            />
-          </div>
-
-          <div>
-            <label className="text-[#64748B] block mb-1.5 font-medium">Parcelas no Cartão (sem juros):</label>
-            <select
-              value={installments}
-              onChange={(e) => setInstallments(Number(e.target.value))}
-              className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-2xl text-white outline-none focus:border-[#2563EB]"
-            >
-              {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
-                <option key={n} value={n} className="text-[#0F172A]">
-                  {n}x {n === 1 ? '(À vista / Pix)' : 'sem juros'}
-                </option>
-              ))}
-            </select>
+          <div className="sm:col-span-2 flex items-end">
+            <p className="text-[#E8D8C3]">
+              A proposta leva o nome do procedimento e a duração. Não leva valor.
+            </p>
           </div>
         </div>
       </div>
@@ -308,7 +275,9 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="px-4 py-2.5 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs font-medium text-[#0F172A] outline-none focus:border-[#2563EB]"
           >
-            <option value="todos">Todas as Categorias</option>
+            <option value="todos">Todas as áreas</option>
+            <option value="estetica">Estética</option>
+            <option value="odontologia">Odontologia</option>
             <option value="botox">Toxina Botulínica (Botox)</option>
             <option value="harmonizacao">Harmonização & Preenchedores</option>
             <option value="bioestimuladores">Bioestimuladores de Colágeno</option>
@@ -318,7 +287,7 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsCreating(true)}
+            onClick={() => alert('Estes são os 13 procedimentos da clínica, com a duração que ocupa a agenda. A lista não é alterada aqui, para continuar igual na marcação.')}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-medium rounded-full transition-all shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -331,8 +300,6 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredProcedures.map((proc) => {
           const isSelectedInBudget = selectedBudgetProcs.some(item => item.procId === proc.id);
-          const margin = proc.defaultPrice - proc.costPrice;
-          const marginPercent = Math.round((margin / proc.defaultPrice) * 100);
 
           return (
             <div
@@ -360,28 +327,21 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
                   {proc.description}
                 </p>
 
-                <div className="mt-4 p-4 bg-[#F8FAFC] rounded-2xl border border-[#CBD5E1] space-y-2 text-xs">
+                <div className="mt-4 p-4 bg-[#F5EFE6] rounded-2xl border border-[#E8D8C3] text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-[#334155] font-medium">Preço ao Paciente:</span>
-                    <span className="font-serif italic text-base font-bold text-[#0F172A]">
-                      R$ {proc.defaultPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    <span className="text-[#5C4033] font-medium">Ocupa na agenda:</span>
+                    <span className="font-serif italic text-base font-bold text-[#5C4033]">
+                      {proc.durationMinutes} min
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-[#64748B]">Custo Estimado de Insumos:</span>
-                    <span className="text-[#1E293B] font-medium">R$ {proc.costPrice}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-emerald-800 font-medium">Margem Bruta Clínica:</span>
-                    <span className="text-emerald-800 font-semibold">{marginPercent}% (R$ {margin})</span>
-                  </div>
+                  <p className="text-[11px] text-[#6B7B4B] mt-1">{proc.area || 'Clínica'} · sem preço pré-cadastrado</p>
                 </div>
               </div>
 
               {/* Bottom Action */}
               <div className="mt-5 pt-4 border-t border-[#CBD5E1] flex items-center justify-between">
                 <span className="text-[11px] text-[#64748B]">
-                  Retoque: {proc.recommendedRetouchDays} dias
+                  {proc.area || proc.category}
                 </span>
 
                 <button
@@ -467,24 +427,8 @@ export const ProceduresModule: React.FC<ProceduresModuleProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block font-medium text-[#1E293B] mb-1.5">Preço Sugerido (R$)</label>
-                  <input
-                    type="number"
-                    value={formData.defaultPrice}
-                    onChange={(e) => setFormData({ ...formData, defaultPrice: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-[#0F172A] focus:bg-white focus:border-[#2563EB] outline-none text-xs font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-medium text-[#1E293B] mb-1.5">Custo Estimado de Insumos (R$)</label>
-                  <input
-                    type="number"
-                    value={formData.costPrice}
-                    onChange={(e) => setFormData({ ...formData, costPrice: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-[#0F172A] focus:bg-white focus:border-[#2563EB] outline-none text-xs"
-                  />
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-[#6B7B4B]">Sem campo de valor. A duração é o que ocupa a agenda.</p>
                 </div>
               </div>
 

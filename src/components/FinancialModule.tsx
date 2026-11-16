@@ -26,7 +26,7 @@ export const FinancialModule: React.FC<FinancialModuleProps> = ({
     type: 'receita',
     category: 'Procedimento HOF',
     description: '',
-    amount: 1800,
+    amount: undefined,
     date: new Date().toISOString().split('T')[0],
     paymentMethod: 'pix',
     status: 'pago'
