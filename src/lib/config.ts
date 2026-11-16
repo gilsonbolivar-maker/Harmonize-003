@@ -17,6 +17,12 @@ export const CLINICA = {
   fuso: '-03:00',
 };
 
+// Assistente de IA (menu Pós-cuidado, tela de protocolos e auditoria da anamnese).
+// Fica false porque no GitHub Pages o servidor da IA não está no ar.
+// Para religar: mude para true e publique de novo. O código permanece em
+// src/components/AiAssistantModule.tsx, src/App.tsx e src/components/PatientsModule.tsx.
+export const IA_ATIVA = false;
+
 export const CORES = {
   creme: '#F5EFE6',
   areia: '#E8D8C3',
