@@ -1,13 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Patient, Appointment, InventoryItem, ProcedureCatalogItem,
   Professional, FinancialTransaction, FaceMapPoint, AppointmentStatus
 } from './types';
-import {
-  INITIAL_PATIENTS, INITIAL_PROCEDURES, INITIAL_INVENTORY,
-  INITIAL_APPOINTMENTS, INITIAL_PROFESSIONALS, INITIAL_TRANSACTIONS,
-  initialFaceMapPoints
-} from './data/mockData';
 import { PatientsModule } from './components/PatientsModule';
 import { AppointmentsModule } from './components/AppointmentsModule';
 import { InventoryModule } from './components/InventoryModule';
@@ -15,14 +10,20 @@ import { ProceduresModule } from './components/ProceduresModule';
 import { FinancialModule } from './components/FinancialModule';
 import { AiAssistantModule } from './components/AiAssistantModule';
 import { FaceMapStudio } from './components/FaceMapStudio';
-
+import { Entrar } from './components/Entrar';
+import { CLINICA, CORES } from './lib/config';
+import { hojeISO } from './lib/datas';
+import { supabase } from './lib/supabase';
+import {
+  Bloqueio, Equipe, ajustarEstoque, atualizarStatus, carregarBloqueios, carregarEstoque,
+  carregarFinanceiro, carregarMapas, carregarMarcacoes, carregarPacientes, carregarServicos,
+  criarPacienteRapido, equipeDaSessao, excluirEstoque, excluirPaciente, sair, salvarEstoque,
+  salvarFinanceiro, salvarMapa, salvarMarcacao, salvarPaciente,
+} from './lib/clinicaApi';
 import {
   Sparkles, Users, Calendar as CalendarIcon, Package, FileText,
-  DollarSign, SlidersHorizontal, Bell, Plus, Clock, CheckCircle2,
-  AlertTriangle, ShieldCheck, ChevronRight, Menu, X, ArrowUpRight,
-  TrendingUp, Syringe, HeartPulse
+  DollarSign, SlidersHorizontal, Menu, X, LogOut
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 type NavModule =
   | 'dashboard'
@@ -34,723 +35,414 @@ type NavModule =
   | 'financial'
   | 'ai_assistant';
 
+const JIMENA: Professional = {
+  id: 'jimena',
+  name: CLINICA.nome,
+  role: CLINICA.subtitulo,
+  council: 'CRO',
+  councilNumber: CLINICA.registro,
+  phone: CLINICA.whatsapp,
+  email: '',
+  avatarUrl: '',
+  color: CORES.musgo,
+  commissionPercent: 0,
+};
+
 export default function App() {
-  // Navigation State
-  const [activeModule, setActiveModule] = useState<NavModule>('dashboard');
+  const [equipe, setEquipe] = useState<Equipe | null>(null);
+  const [authPronto, setAuthPronto] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+  const [erroGeral, setErroGeral] = useState('');
+  const [activeModule, setActiveModule] = useState<NavModule>('appointments');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Core Data States (with local persistence)
-  const [patients, setPatients] = useState<Patient[]>(() => {
-    const saved = localStorage.getItem('harmonize_patients');
-    return saved ? JSON.parse(saved) : INITIAL_PATIENTS;
-  });
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [procedures, setProcedures] = useState<ProcedureCatalogItem[]>([]);
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+  const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
+  const [faceMaps, setFaceMaps] = useState<Record<string, FaceMapPoint[]>>({});
+  const [standalonePatientId, setStandalonePatientId] = useState('');
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    const saved = localStorage.getItem('harmonize_appointments');
-    return saved ? JSON.parse(saved) : INITIAL_APPOINTMENTS;
-  });
+  const dentista = equipe?.papel === 'dentista';
 
-  const [inventory, setInventory] = useState<InventoryItem[]>(() => {
-    const saved = localStorage.getItem('harmonize_inventory');
-    return saved ? JSON.parse(saved) : INITIAL_INVENTORY;
-  });
-
-  const [procedures, setProcedures] = useState<ProcedureCatalogItem[]>(() => {
-    const saved = localStorage.getItem('harmonize_procedures');
-    return saved ? JSON.parse(saved) : INITIAL_PROCEDURES;
-  });
-
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>(() => {
-    const saved = localStorage.getItem('harmonize_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-  });
-
-  const [professionals] = useState<Professional[]>(INITIAL_PROFESSIONALS);
-
-  // Face Maps per Patient
-  const [faceMaps, setFaceMaps] = useState<Record<string, FaceMapPoint[]>>(() => {
-    const saved = localStorage.getItem('harmonize_facemaps_v2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object' && Array.isArray(parsed['pat-1'])) {
-          return { ...initialFaceMapPoints, ...parsed };
-        }
-      } catch (e) {
-        console.error("Failed to parse saved facemaps", e);
-      }
+  const recarregar = useCallback(async (quem: Equipe) => {
+    const jimena = quem.papel === 'dentista';
+    const [servicos, pacientes, marcacoes, ausencias] = await Promise.all([
+      carregarServicos(),
+      carregarPacientes(jimena),
+      carregarMarcacoes(),
+      carregarBloqueios(),
+    ]);
+    setProcedures(servicos);
+    setPatients(pacientes);
+    setAppointments(marcacoes);
+    setBloqueios(ausencias);
+    setStandalonePatientId((atual) => atual || pacientes[0]?.id || '');
+    if (jimena) {
+      const [mapas, estoque, financeiro] = await Promise.all([
+        carregarMapas(),
+        carregarEstoque(),
+        carregarFinanceiro(pacientes),
+      ]);
+      setFaceMaps(mapas);
+      setInventory(estoque);
+      setTransactions(financeiro);
+    } else {
+      setFaceMaps({});
+      setInventory([]);
+      setTransactions([]);
     }
-    return initialFaceMapPoints;
-  });
-
-  // Active Selected Patient for standalone FaceMapStudio tab
-  const [standalonePatientId, setStandalonePatientId] = useState<string>(patients[0]?.id || 'pat-1');
-
-  // Sync to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('harmonize_patients', JSON.stringify(patients));
-  }, [patients]);
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('harmonize_appointments', JSON.stringify(appointments));
-  }, [appointments]);
-
-  useEffect(() => {
-    localStorage.setItem('harmonize_inventory', JSON.stringify(inventory));
-  }, [inventory]);
-
-  useEffect(() => {
-    localStorage.setItem('harmonize_procedures', JSON.stringify(procedures));
-  }, [procedures]);
-
-  useEffect(() => {
-    localStorage.setItem('harmonize_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('harmonize_facemaps_v2', JSON.stringify(faceMaps));
-  }, [faceMaps]);
-
-  // Handlers
-  const handleSavePatient = (pat: Patient) => {
-    setPatients(prev => {
-      const exists = prev.some(p => p.id === pat.id);
-      if (exists) {
-        return prev.map(p => p.id === pat.id ? pat : p);
-      }
-      return [pat, ...prev];
+    let vivo = true;
+    equipeDaSessao()
+      .then((eq) => { if (vivo) setEquipe(eq); })
+      .finally(() => { if (vivo) setAuthPronto(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      equipeDaSessao().then((eq) => { if (vivo) setEquipe(eq); });
     });
+    return () => {
+      vivo = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!equipe) return;
+    let vivo = true;
+    setCarregando(true);
+    recarregar(equipe)
+      .catch((e) => setErroGeral(e instanceof Error ? e.message : 'Não consegui carregar os dados.'))
+      .finally(() => { if (vivo) setCarregando(false); });
+
+    const canal = supabase
+      .channel('harmonize-agenda')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clinica_marcacoes' }, () => {
+        recarregar(equipe).catch(() => undefined);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clinica_bloqueios' }, () => {
+        recarregar(equipe).catch(() => undefined);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clinica_pacientes' }, () => {
+        recarregar(equipe).catch(() => undefined);
+      })
+      .subscribe();
+
+    return () => {
+      vivo = false;
+      supabase.removeChannel(canal);
+    };
+  }, [equipe, recarregar]);
+
+  useEffect(() => {
+    if (!dentista && activeModule !== 'appointments') setActiveModule('appointments');
+  }, [dentista, activeModule]);
+
+  const avisar = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : 'Não consegui salvar.';
+    setErroGeral(msg);
+    alert(msg);
   };
 
-  const handleDeletePatient = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir o prontuário deste paciente?")) {
-      setPatients(prev => prev.filter(p => p.id !== id));
-    }
+  const handleSavePatient = async (pat: Patient) => {
+    try {
+      await salvarPaciente(pat);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleUpdateFaceMap = (patientId: string, points: FaceMapPoint[]) => {
-    setFaceMaps(prev => ({
-      ...prev,
-      [patientId]: points
-    }));
+  const handleDeletePatient = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir o prontuário deste paciente?')) return;
+    try {
+      await excluirPaciente(id);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleSaveAppointment = (apt: Appointment) => {
-    setAppointments(prev => {
-      const exists = prev.some(a => a.id === apt.id);
-      if (exists) {
-        return prev.map(a => a.id === apt.id ? apt : a);
-      }
-      return [apt, ...prev];
-    });
+  const handleUpdateFaceMap = async (patientId: string, points: FaceMapPoint[]) => {
+    setFaceMaps((prev) => ({ ...prev, [patientId]: points }));
+    try {
+      await salvarMapa(patientId, points);
+    } catch (e) { avisar(e); }
   };
 
-  const handleDeleteAppointment = (id: string) => {
-    setAppointments(prev => prev.filter(a => a.id !== id));
+  const handleSaveAppointment = async (apt: Appointment) => {
+    await salvarMarcacao(apt, procedures);
+    if (equipe) await recarregar(equipe);
   };
 
-  const handleUpdateAppointmentStatus = (id: string, status: AppointmentStatus) => {
-    setAppointments(prev => prev.map(a => {
-      if (a.id === id) {
-        return { ...a, status };
-      }
-      return a;
-    }));
+  const handleDeleteAppointment = async (id: string) => {
+    try {
+      await atualizarStatus(id, 'cancelado');
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleSaveInventory = (item: InventoryItem) => {
-    setInventory(prev => {
-      const exists = prev.some(i => i.id === item.id);
-      if (exists) {
-        return prev.map(i => i.id === item.id ? item : i);
-      }
-      return [item, ...prev];
-    });
+  const handleUpdateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
+    try {
+      await atualizarStatus(id, status);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleDeleteInventory = (id: string) => {
-    setInventory(prev => prev.filter(i => i.id !== id));
+  const handleCreatePatient = async (nome: string, telefone: string) => {
+    const criado = await criarPacienteRapido(nome, telefone);
+    if (equipe) await recarregar(equipe);
+    return criado;
   };
 
-  const handleAdjustStock = (id: string, delta: number) => {
-    setInventory(prev => prev.map(item => {
-      if (item.id === id) {
-        const newStock = Math.max(0, item.currentStock + delta);
-        return { ...item, currentStock: newStock };
-      }
-      return item;
-    }));
+  const handleSaveInventory = async (item: InventoryItem) => {
+    try {
+      await salvarEstoque(item);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleSaveProcedure = (proc: ProcedureCatalogItem) => {
-    setProcedures(prev => {
-      const exists = prev.some(p => p.id === proc.id);
-      if (exists) {
-        return prev.map(p => p.id === proc.id ? proc : p);
-      }
-      return [proc, ...prev];
-    });
+  const handleDeleteInventory = async (id: string) => {
+    try {
+      await excluirEstoque(id);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
-  const handleSaveTransaction = (tx: FinancialTransaction) => {
-    setTransactions(prev => [tx, ...prev]);
+  const handleAdjustStock = async (id: string, delta: number) => {
+    const item = inventory.find((i) => i.id === id);
+    if (!item) return;
+    try {
+      await ajustarEstoque(id, Math.max(0, item.currentStock + delta));
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
+  };
+
+  const handleSaveProcedure = () => {
+    alert('Estes são os 13 procedimentos da clínica, com a duração que ocupa a agenda. A lista não é alterada aqui, para continuar igual na marcação.');
+  };
+
+  const handleSaveTransaction = async (tx: FinancialTransaction) => {
+    try {
+      await salvarFinanceiro(tx);
+      if (equipe) await recarregar(equipe);
+    } catch (e) { avisar(e); }
   };
 
   const handleOpenPatientRecord = (patientId: string) => {
+    if (!dentista) return;
     setStandalonePatientId(patientId);
     setActiveModule('patients');
   };
 
-  // Metrics for Dashboard
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todayAppointments = appointments.filter(a => a.date === todayStr);
-  const pendingRetouchCount = appointments.filter(a => a.isBotoxRetouch && a.status !== 'concluido').length;
-  const criticalStockItems = inventory.filter(i => i.currentStock <= i.minStock);
-  const currentMonthRevenue = transactions
-    .filter(t => t.type === 'receita' && t.status === 'pago')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const selectedPatientForFaceMap = patients.find(p => p.id === standalonePatientId) || patients[0];
-
-  interface NavItemConfig {
-    id: NavModule;
-    label: string;
-    sublabel: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string | number;
-    alertBadge?: boolean;
+  if (!authPronto) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: CORES.creme, color: CORES.cafe }}>
+        Carregando…
+      </div>
+    );
   }
 
-  const navItems: NavItemConfig[] = [
-    { id: 'dashboard', label: 'Visão Geral', sublabel: 'Dashboard clínico', icon: Sparkles },
-    { id: 'patients', label: 'Pacientes', sublabel: `${patients.length} cadastrados`, icon: Users, badge: patients.length },
-    { id: 'appointments', label: 'Agenda & Retoques', sublabel: `${todayAppointments.length} hoje • ${pendingRetouchCount} retoques`, icon: CalendarIcon, badge: todayAppointments.length > 0 ? `${todayAppointments.length}` : undefined },
-    { id: 'facemap', label: 'Mapeamento Facial', sublabel: 'Marcação anatômica 2D', icon: SlidersHorizontal },
-    { id: 'inventory', label: 'Estoque Injetáveis', sublabel: 'Frascos & ANVISA', icon: Package, alertBadge: inventory.some(i => i.currentStock <= i.minimumStock) },
-    { id: 'procedures', label: 'Procedimentos', sublabel: 'Protocolos & Tabela', icon: FileText },
-    { id: 'financial', label: 'Financeiro', sublabel: 'Fluxo & Comissões', icon: DollarSign },
-    { id: 'ai_assistant', label: 'IA Pós-Cuidado', sublabel: 'Auditoria & Recomendações', icon: Sparkles },
+  if (!equipe) return <Entrar />;
+
+  const hoje = hojeISO();
+  const hojeLista = appointments.filter((a) => a.date === hoje && a.status !== 'cancelado');
+  const criticos = inventory.filter((i) => i.currentStock <= i.minStock);
+  const receitas = transactions.filter((t) => t.type === 'receita' && t.status === 'pago').reduce((s, t) => s + t.amount, 0);
+  const pacienteMapa = patients.find((p) => p.id === standalonePatientId) || patients[0];
+
+  const navItems: { id: NavModule; label: string; sublabel: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'appointments', label: 'Agenda', sublabel: `${hojeLista.length} hoje`, icon: CalendarIcon },
+    ...(dentista ? [
+      { id: 'patients' as NavModule, label: 'Pacientes', sublabel: `${patients.length} no prontuário`, icon: Users },
+      { id: 'facemap' as NavModule, label: 'Mapa facial', sublabel: 'Pontos de botox', icon: SlidersHorizontal },
+      { id: 'inventory' as NavModule, label: 'Estoque', sublabel: 'Injetáveis', icon: Package },
+      { id: 'procedures' as NavModule, label: 'Procedimentos', sublabel: '13 serviços e durações', icon: FileText },
+      { id: 'financial' as NavModule, label: 'Financeiro', sublabel: 'O que a Jimena registrar', icon: DollarSign },
+      { id: 'ai_assistant' as NavModule, label: 'Assistente', sublabel: 'Pós-cuidado', icon: Sparkles },
+      { id: 'dashboard' as NavModule, label: 'Visão geral', sublabel: 'Resumo do dia', icon: Sparkles },
+    ] : []),
   ];
 
   return (
-    <div className="min-h-screen bg-[#FFF4F7] flex flex-col md:flex-row font-sans text-[#0F172A] antialiased selection:bg-[#F472B6]/20 selection:text-[#DB2777]">
-      {/* MOBILE TOP BAR (visible only on small screens) */}
-      <div className="md:hidden bg-white border-b border-[#CBD5E1] p-4 flex items-center justify-between sticky top-0 z-50">
-        <div
-          onClick={() => setActiveModule('dashboard')}
-          className="flex items-center gap-2.5 cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-[#F1F5F9] border border-[#CBD5E1] flex items-center justify-center text-[#1E40AF] font-serif italic text-base font-bold">
-            H
-          </div>
-          <div>
-            <span className="font-serif text-lg text-[#1E40AF] font-medium leading-none">
-              Harmonize
-            </span>
-            <span className="text-[8px] font-bold uppercase tracking-wider block text-[#334155]">
-              Clinical HOF
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-xl text-[#334155] bg-[#F1F5F9] border border-[#CBD5E1]"
-        >
+    <div className="min-h-screen flex flex-col md:flex-row font-sans antialiased" style={{ background: CORES.creme, color: CORES.cafe }}>
+      <div className="md:hidden border-b p-4 flex items-center justify-between sticky top-0 z-50" style={{ background: '#fff', borderColor: CORES.areia }}>
+        <button type="button" onClick={() => setActiveModule('appointments')} className="text-left">
+          <span className="font-serif text-xl block" style={{ color: CORES.cafe }}>{CLINICA.nome}</span>
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: CORES.oliva }}>{CLINICA.subtitulo}</span>
+        </button>
+        <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-xl border" style={{ borderColor: CORES.areia }} aria-label="Menu">
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* LEFT SIDEBAR NAVIGATION (ALWAYS VISIBLE ON DESKTOP/TABLET) */}
-      <aside className={`
-        ${mobileMenuOpen ? 'block' : 'hidden'} md:flex
-        w-full md:w-64 lg:w-72 bg-white border-r border-[#CBD5E1] flex-col shrink-0
-        md:sticky md:top-0 md:h-screen z-40 shadow-xs md:shadow-none
-      `}>
-        {/* Brand Header */}
-        <div className="p-6 border-b border-[#F1F5F9] flex items-center justify-between">
-          <div
-            onClick={() => {
-              setActiveModule('dashboard');
-              setMobileMenuOpen(false);
-            }}
-            className="flex items-center gap-3 cursor-pointer select-none group"
-          >
-            <div className="w-11 h-11 rounded-2xl bg-[#F1F5F9] border border-[#CBD5E1] flex items-center justify-center text-[#1E40AF] shadow-xs group-hover:scale-105 transition-transform font-serif italic text-xl font-bold">
-              H
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-serif text-2xl tracking-tight text-[#0F172A] font-semibold">
-                  Harmonize
-                </span>
-              </div>
-              <p className="text-[9px] uppercase tracking-[0.2em] text-[#1E40AF] font-bold">
-                Clinical • HOF
-              </p>
-            </div>
-          </div>
+      <aside className={`${mobileMenuOpen ? 'flex' : 'hidden'} md:flex w-full md:w-64 lg:w-72 border-r flex-col shrink-0 md:sticky md:top-0 md:h-screen z-40`} style={{ background: '#fff', borderColor: CORES.areia }}>
+        <div className="p-6 border-b hidden md:block" style={{ borderColor: CORES.areia }}>
+          <p className="font-serif text-2xl" style={{ color: CORES.cafe }}>{CLINICA.nome}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em]" style={{ color: CORES.oliva }}>{CLINICA.subtitulo}</p>
         </div>
-
-        {/* Quick Action Button */}
-        <div className="p-4 pb-2">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveModule('appointments');
-              setMobileMenuOpen(false);
-            }}
-            className="w-full py-2.5 px-4 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-2xl text-xs font-semibold shadow-xs transition-all flex items-center justify-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Novo Agendamento</span>
-          </button>
-        </div>
-
-        {/* Navigation Section Title */}
-        <div className="px-5 pt-3 pb-1">
-          <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em]">
-            Menu Principal
-          </span>
-        </div>
-
-        {/* Always Visible Navigation Buttons */}
-        <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto py-1">
+        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
           {navItems.map((tab) => {
-            const isActive = activeModule === tab.id;
             const Icon = tab.icon;
-
+            const ativo = activeModule === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
                 id={`nav-btn-${tab.id}`}
-                onClick={() => {
-                  setActiveModule(tab.id as NavModule);
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full p-3 rounded-2xl transition-all flex items-center justify-between text-left group ${
-                  isActive
-                    ? 'bg-[#F1F5F9] text-[#1D4ED8] font-semibold border border-[#CBD5E1] shadow-2xs'
-                    : 'text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A] border border-transparent'
-                }`}
+                onClick={() => { setActiveModule(tab.id); setMobileMenuOpen(false); }}
+                className="w-full p-3 rounded-2xl flex items-center gap-3 text-left"
+                style={{ background: ativo ? CORES.creme : 'transparent', color: CORES.cafe }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`p-2 rounded-xl transition-colors ${
-                    isActive ? 'bg-[#2563EB] text-white' : 'bg-[#F1F5F9] text-[#334155] group-hover:text-[#1E40AF]'
-                  }`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="truncate">
-                    <p className={`text-xs truncate ${isActive ? 'font-bold text-[#0F172A]' : 'font-medium'}`}>
-                      {tab.label}
-                    </p>
-                    <p className="text-[10px] text-[#64748B] font-light truncate">
-                      {tab.sublabel}
-                    </p>
-                  </div>
-                </div>
-
-                {tab.badge && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    isActive ? 'bg-[#2563EB] text-white' : 'bg-[#F1F5F9] text-[#334155]'
-                  }`}>
-                    {tab.badge}
-                  </span>
-                )}
-
-                {tab.alertBadge && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Atenção no estoque" />
-                )}
+                <span className="p-2 rounded-xl" style={{ background: ativo ? CORES.musgo : CORES.creme, color: ativo ? '#fff' : CORES.cafe }}>
+                  <Icon className="w-4 h-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold truncate">{tab.label}</span>
+                  <span className="block text-[11px] truncate" style={{ color: CORES.oliva }}>{tab.sublabel}</span>
+                </span>
               </button>
             );
           })}
         </nav>
-
-        {/* Sidebar Footer Info */}
-        <div className="p-4 border-t border-[#F1F5F9] bg-[#F8FAFC] rounded-b-3xl md:rounded-none">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs">
-              DR
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[#0F172A] truncate">
-                Dra. Helena Vasconcelos
-              </p>
-              <p className="text-[10px] text-[#64748B] truncate">
-                CRO-SP 102.894 • Responsável
-              </p>
-            </div>
-          </div>
-          <div className="mt-2.5 pt-2 border-t border-[#CBD5E1]/60 flex items-center justify-between text-[10px] text-[#334155]">
-            <span>Data:</span>
-            <span className="font-semibold text-[#0F172A]">
-              {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-            </span>
-          </div>
+        <div className="p-4 border-t" style={{ borderColor: CORES.areia }}>
+          <p className="text-sm font-semibold">{equipe.nome}</p>
+          <p className="text-[11px]" style={{ color: CORES.oliva }}>
+            {dentista ? 'Acesso completo' : 'Somente a agenda'}
+            {CLINICA.registro ? ` · ${CLINICA.registro}` : ''}
+          </p>
+          <button type="button" onClick={() => sair()} className="mt-3 text-xs font-semibold inline-flex items-center gap-1" style={{ color: CORES.terracota }}>
+            <LogOut className="w-3.5 h-3.5" /> Sair
+          </button>
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Main Content View */}
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-        {/* MODULE 1: DASHBOARD / VISÃO GERAL */}
-        {activeModule === 'dashboard' && (
-          <div id="dashboard-view" className="space-y-8 animate-in fade-in">
-            {/* Sleek Baby Blue Clinical Hero Banner */}
-            <div className="bg-[#102438] text-white rounded-3xl p-6 sm:p-8 shadow-sm border border-[#1E3B5A] relative overflow-hidden">
-              <div className="max-w-2xl relative z-10 space-y-3.5">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-[#C5E1F5] text-[10px] font-semibold uppercase tracking-[0.2em] border border-white/10">
-                  <Sparkles className="w-3 h-3 text-[#6BA4D8]" />
-                  Gestão Clínica & Harmonização
-                </span>
-                <h2 className="font-serif italic text-2xl sm:text-3xl text-white tracking-tight">
-                  Bem-vindo(a) à Harmonize Clinical
-                </h2>
-                <p className="text-[#BBD5E8] text-xs sm:text-sm leading-relaxed font-light">
-                  Sistema integrado de prontuário com mapeamento facial anatômico 2D, controle de frascos de Toxina e Preenchedores, conformidade com a ANVISA e assistência de IA para protocolos de pós-cuidado.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveModule('appointments')}
-                    className="px-5 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs rounded-full transition-all shadow-xs flex items-center gap-2"
-                  >
-                    <CalendarIcon className="w-3.5 h-3.5" />
-                    Abrir Agenda de Hoje ({todayAppointments.length})
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveModule('facemap')}
-                    className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-medium text-xs rounded-full border border-white/15 transition-all flex items-center gap-2"
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#C5E1F5]" />
-                    Iniciar Mapeamento Facial
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick KPI Cards in Baby Blue Theme */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              <div
-                onClick={() => setActiveModule('appointments')}
-                className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs hover:border-[#2563EB]/60 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold text-[#1E40AF] uppercase tracking-[0.18em]">
-                    Atendimentos Hoje
-                  </span>
-                  <span className="p-2 bg-[#F1F5F9] text-[#1E40AF] rounded-xl group-hover:scale-105 transition-transform">
-                    <CalendarIcon className="w-4 h-4" />
-                  </span>
-                </div>
-                <div className="text-3xl font-serif italic text-[#0F172A] font-normal">
-                  {todayAppointments.length}
-                </div>
-                <span className="text-[11px] text-[#334155] mt-1.5 block">
-                  {appointments.filter(a => a.status === 'concluido').length} já concluídos no mês
-                </span>
-              </div>
-
-              <div
-                onClick={() => setActiveModule('appointments')}
-                className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs hover:border-[#2563EB]/60 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold text-[#1E40AF] uppercase tracking-[0.18em]">
-                    Retoques de Botox (15d)
-                  </span>
-                  <span className="p-2 bg-[#F1F5F9] text-[#1E40AF] rounded-xl group-hover:scale-105 transition-transform">
-                    <Clock className="w-4 h-4" />
-                  </span>
-                </div>
-                <div className="text-3xl font-serif italic text-[#0F172A]">
-                  {pendingRetouchCount} <span className="text-xs font-sans not-italic text-[#334155]">pendentes</span>
-                </div>
-                <span className="text-[11px] text-[#1E40AF] mt-1.5 block font-medium">
-                  Janela ideal de retorno de toxina
-                </span>
-              </div>
-
-              <div
-                onClick={() => setActiveModule('inventory')}
-                className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs hover:border-[#2563EB]/60 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold text-[#1E40AF] uppercase tracking-[0.18em]">
-                    Estoque Injetáveis
-                  </span>
-                  <span className="p-2 bg-[#F1F5F9] text-[#1E40AF] rounded-xl group-hover:scale-105 transition-transform">
-                    <Package className="w-4 h-4" />
-                  </span>
-                </div>
-                <div className="text-3xl font-serif italic text-[#0F172A]">
-                  {inventory.length} <span className="text-xs font-sans not-italic text-[#334155]">lotes ativos</span>
-                </div>
-                <span className="text-[11px] text-[#B45309] mt-1.5 block font-medium">
-                  {criticalStockItems.length} com alerta de reposição
-                </span>
-              </div>
-
-              {/* Monthly Revenue Dark Marine Accent Card */}
-              <div
-                onClick={() => setActiveModule('financial')}
-                className="bg-[#102438] p-6 rounded-3xl text-white shadow-xs hover:border-[#2563EB] border border-transparent transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] text-[#A2C7E5]">
-                      Faturamento Mensal
-                    </h3>
-                    <p className="text-2xl sm:text-3xl font-serif italic text-white mt-1">
-                      R$ {currentMonthRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </p>
+      <div className="flex-1 min-w-0">
+        <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6">
+          {erroGeral && (
+            <p className="mb-4 text-sm rounded-2xl px-4 py-3" style={{ background: '#fff', color: CORES.terracota }}>
+              {erroGeral}
+            </p>
+          )}
+          {carregando && appointments.length === 0 && procedures.length === 0 ? (
+            <p className="text-sm" style={{ color: CORES.oliva }}>Carregando a agenda…</p>
+          ) : (
+            <>
+              {activeModule === 'dashboard' && dentista && (
+                <div className="space-y-6">
+                  <div className="rounded-3xl p-6 text-white" style={{ background: CORES.musgo }}>
+                    <p className="text-xs uppercase tracking-[0.16em] opacity-80">Resumo de hoje</p>
+                    <h2 className="font-serif text-3xl mt-1">{hojeLista.length} {hojeLista.length === 1 ? 'marcação' : 'marcações'}</h2>
+                    <button type="button" onClick={() => setActiveModule('appointments')} className="mt-4 px-4 py-2 rounded-full text-sm font-semibold" style={{ background: CORES.creme, color: CORES.cafe }}>
+                      Abrir a agenda
+                    </button>
                   </div>
-                  <div className="bg-white/10 p-2 rounded-full">
-                    <ArrowUpRight className="w-3.5 h-3.5 text-[#C5E1F5]" />
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-2 flex items-end space-x-1.5 h-10">
-                  <div className="flex-1 bg-white/10 h-[40%] rounded-t-sm"></div>
-                  <div className="flex-1 bg-white/10 h-[60%] rounded-t-sm"></div>
-                  <div className="flex-1 bg-white/10 h-[35%] rounded-t-sm"></div>
-                  <div className="flex-1 bg-white/20 h-[75%] rounded-t-sm"></div>
-                  <div className="flex-1 bg-[#2563EB] h-[95%] rounded-t-sm"></div>
-                  <div className="flex-1 bg-white/20 h-[50%] rounded-t-sm"></div>
-                </div>
-                <p className="text-[10px] text-[#A2C7E5] mt-2">
-                  +18% em relação ao mês anterior
-                </p>
-              </div>
-            </div>
-
-            {/* Two-column overview: Today Schedule (Left) & Quick Clinical Tools (Right) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Today's Appointments List */}
-              <div className="lg:col-span-8 bg-white rounded-3xl border border-[#CBD5E1] shadow-xs p-6 sm:p-7 space-y-5">
-                <div className="flex items-center justify-between pb-4 border-b border-[#CBD5E1]">
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[#1E40AF]">
-                      Próximos Procedimentos
-                    </h3>
-                    <span className="text-[10px] bg-[#F1F5F9] text-[#1D4ED8] px-3 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                      Hoje
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModule('appointments')}
-                    className="text-xs font-medium text-[#1E40AF] hover:text-[#2563EB] flex items-center gap-1"
-                  >
-                    Ver Agenda Completa <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {todayAppointments.length === 0 ? (
-                    <div className="py-10 text-center text-[#334155] text-xs">
-                      Nenhum paciente agendado para hoje.
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="rounded-3xl bg-white p-5 border" style={{ borderColor: CORES.areia }}>
+                      <p className="text-[11px] uppercase tracking-wider" style={{ color: CORES.oliva }}>Pacientes</p>
+                      <p className="font-serif text-3xl">{patients.length}</p>
                     </div>
+                    <div className="rounded-3xl bg-white p-5 border" style={{ borderColor: CORES.areia }}>
+                      <p className="text-[11px] uppercase tracking-wider" style={{ color: CORES.oliva }}>Estoque em alerta</p>
+                      <p className="font-serif text-3xl">{criticos.length}</p>
+                    </div>
+                    <div className="rounded-3xl bg-white p-5 border" style={{ borderColor: CORES.areia }}>
+                      <p className="text-[11px] uppercase tracking-wider" style={{ color: CORES.oliva }}>Receitas registradas</p>
+                      <p className="font-serif text-3xl">R$ {receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeModule === 'patients' && dentista && (
+                <PatientsModule
+                  patients={patients}
+                  onSavePatient={handleSavePatient}
+                  onDeletePatient={handleDeletePatient}
+                  faceMapRecords={faceMaps}
+                  onUpdateFaceMap={handleUpdateFaceMap}
+                />
+              )}
+
+              {activeModule === 'appointments' && (
+                <AppointmentsModule
+                  appointments={appointments}
+                  patients={patients}
+                  procedures={procedures}
+                  professionals={[JIMENA]}
+                  bloqueios={bloqueios}
+                  onSaveAppointment={handleSaveAppointment}
+                  onUpdateStatus={handleUpdateAppointmentStatus}
+                  onOpenPatientRecord={handleOpenPatientRecord}
+                  onDeleteAppointment={handleDeleteAppointment}
+                  onCreatePatient={handleCreatePatient}
+                  podeProntuario={dentista}
+                  podeAnotacao={dentista}
+                />
+              )}
+
+              {activeModule === 'facemap' && dentista && (
+                <div className="space-y-6">
+                  <div className="bg-white p-6 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4" style={{ borderColor: CORES.areia }}>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: CORES.oliva }}>Mapa facial</p>
+                      <h3 className="font-serif text-2xl">Marcação de pontos de botox</h3>
+                      <p className="text-xs mt-1" style={{ color: CORES.oliva }}>A mesma face vale para mulher e homem.</p>
+                    </div>
+                    <select
+                      value={standalonePatientId}
+                      onChange={(e) => setStandalonePatientId(e.target.value)}
+                      className="px-4 py-2.5 rounded-2xl border text-sm"
+                      style={{ borderColor: CORES.areia, background: CORES.creme }}
+                    >
+                      {patients.length === 0 && <option value="">Nenhum paciente</option>}
+                      {patients.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {pacienteMapa ? (
+                    <FaceMapStudio
+                      points={faceMaps[pacienteMapa.id] || []}
+                      onChangePoints={(pts) => handleUpdateFaceMap(pacienteMapa.id, pts)}
+                      patientName={pacienteMapa.name}
+                      patientGender={pacienteMapa.gender}
+                    />
                   ) : (
-                    todayAppointments.map((apt, idx) => (
-                      <div
-                        key={apt.id}
-                        className="p-4 bg-[#F8FAFC] rounded-2xl border border-transparent hover:border-[#CBD5E1] transition-all flex items-center justify-between gap-4"
-                      >
-                        <div className="flex items-center space-x-4 min-w-0 flex-1">
-                          <div
-                            className={`w-1 h-10 rounded-full shrink-0 ${
-                              idx % 2 === 0 ? 'bg-[#2563EB]' : 'bg-[#B8D3E5]'
-                            }`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold text-[#0F172A] truncate" title={apt.patientName}>
-                              {apt.patientName}
-                            </p>
-                            <p className="text-[11px] text-[#334155] truncate" title={apt.procedureNames.join(' • ')}>
-                              {apt.procedureNames.join(' • ')}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-[#0F172A]">{apt.time}</p>
-                            <span
-                              className={`text-[10px] font-bold uppercase ${
-                                apt.status === 'concluido'
-                                  ? 'text-emerald-700'
-                                  : apt.status === 'confirmado'
-                                  ? 'text-sky-700'
-                                  : 'text-amber-600'
-                              }`}
-                            >
-                              {apt.status}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPatientRecord(apt.patientId)}
-                            className="px-3.5 py-1.5 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#1D4ED8] font-bold text-xs rounded-xl transition-all shadow-2xs shrink-0"
-                          >
-                            Prontuário
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                    <p className="text-sm">Cadastre um paciente para marcar os pontos.</p>
                   )}
                 </div>
-              </div>
+              )}
 
-              {/* Fast Clinical Shortcuts & Safety Protocols */}
-              <div className="lg:col-span-4 space-y-5">
-                {/* Follow-up / Touch-Up Card */}
-                <div className="bg-[#F1F5F9] rounded-3xl p-6 border border-[#D0E3F0] space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-[#1D4ED8] uppercase tracking-[0.18em]">
-                      Pós-Procedimento
-                    </span>
-                    <Clock className="w-4 h-4 text-[#1E40AF]" />
-                  </div>
-                  <h4 className="font-serif italic text-lg text-[#0F172A] font-medium">
-                    Lembrete de Follow-up (48h / 15 dias)
-                  </h4>
-                  <p className="text-xs text-[#334155] leading-relaxed">
-                    Acompanhe a cicatrização e evolução dos tratamentos de Harmonização e Toxina dos pacientes recentes.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModule('ai_assistant')}
-                    className="w-full bg-white text-[#1D4ED8] border border-[#1D4ED8]/25 px-5 py-2.5 rounded-2xl text-xs font-bold hover:bg-[#2563EB] hover:text-white transition-all shadow-2xs"
-                  >
-                    Iniciar Follow-up com IA
-                  </button>
-                </div>
+              {activeModule === 'inventory' && dentista && (
+                <InventoryModule
+                  inventory={inventory}
+                  onSaveItem={handleSaveInventory}
+                  onDeleteItem={handleDeleteInventory}
+                  onAdjustStock={handleAdjustStock}
+                />
+              )}
 
-                {/* Face Map Quick Access */}
-                <div className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs space-y-3.5">
-                  <div className="flex items-center gap-2 text-[#0F172A] font-serif text-base">
-                    <SlidersHorizontal className="w-4 h-4 text-[#1E40AF]" />
-                    <span>Mapeamento Anatômico 2D</span>
-                  </div>
-                  <p className="text-xs text-[#334155] leading-relaxed">
-                    Marque os pontos exatos de injeção no mapa vetorial com dosagem (U / ml) e lote Anvisa.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModule('facemap')}
-                    className="w-full py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium text-xs rounded-full transition-all shadow-xs"
-                  >
-                    Acessar Studio de Harmonização
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+              {activeModule === 'procedures' && dentista && (
+                <ProceduresModule
+                  procedures={procedures}
+                  patients={patients}
+                  onSaveProcedure={handleSaveProcedure}
+                />
+              )}
 
-        {/* MODULE 2: PATIENTS & PRONTUÁRIOS */}
-        {activeModule === 'patients' && (
-          <PatientsModule
-            patients={patients}
-            onSavePatient={handleSavePatient}
-            onDeletePatient={handleDeletePatient}
-            faceMapRecords={faceMaps}
-            onUpdateFaceMap={handleUpdateFaceMap}
-          />
-        )}
+              {activeModule === 'financial' && dentista && (
+                <FinancialModule
+                  transactions={transactions}
+                  professionals={[JIMENA]}
+                  onSaveTransaction={handleSaveTransaction}
+                />
+              )}
 
-        {/* MODULE 3: APPOINTMENTS & CALENDAR */}
-        {activeModule === 'appointments' && (
-          <AppointmentsModule
-            appointments={appointments}
-            patients={patients}
-            procedures={procedures}
-            professionals={professionals}
-            onSaveAppointment={handleSaveAppointment}
-            onUpdateStatus={handleUpdateAppointmentStatus}
-            onOpenPatientRecord={handleOpenPatientRecord}
-            onDeleteAppointment={handleDeleteAppointment}
-          />
-        )}
-
-        {/* MODULE 4: STANDALONE FACIAL MAPPING STUDIO */}
-        {activeModule === 'facemap' && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-bold text-[#1E40AF] uppercase tracking-[0.2em] block">
-                  Studio Anatômico de Harmonização Facial
-                </span>
-                <h3 className="font-serif italic text-2xl text-[#0F172A]">
-                  Prontuário Gráfico de Injetáveis
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <label className="text-xs font-medium text-[#334155] shrink-0">Paciente:</label>
-                <select
-                  value={standalonePatientId}
-                  onChange={(e) => setStandalonePatientId(e.target.value)}
-                  className="px-4 py-2.5 bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl text-xs font-semibold text-[#0F172A] outline-none w-full sm:w-64 focus:border-[#2563EB]"
-                >
-                  {patients.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <FaceMapStudio
-              points={faceMaps[standalonePatientId] || []}
-              onChangePoints={(pts) => handleUpdateFaceMap(standalonePatientId, pts)}
-              patientName={selectedPatientForFaceMap.name}
-            />
-          </div>
-        )}
-
-        {/* MODULE 5: INVENTORY */}
-        {activeModule === 'inventory' && (
-          <InventoryModule
-            inventory={inventory}
-            onSaveItem={handleSaveInventory}
-            onDeleteItem={handleDeleteInventory}
-            onAdjustStock={handleAdjustStock}
-          />
-        )}
-
-        {/* MODULE 6: PROCEDURES & BUDGETS */}
-        {activeModule === 'procedures' && (
-          <ProceduresModule
-            procedures={procedures}
-            patients={patients}
-            onSaveProcedure={handleSaveProcedure}
-          />
-        )}
-
-        {/* MODULE 7: FINANCIAL */}
-        {activeModule === 'financial' && (
-          <FinancialModule
-            transactions={transactions}
-            professionals={professionals}
-            onSaveTransaction={handleSaveTransaction}
-          />
-        )}
-
-        {/* MODULE 8: AI ASSISTANT */}
-        {activeModule === 'ai_assistant' && (
-          <AiAssistantModule
-            patients={patients}
-            procedures={procedures}
-          />
-        )}
+              {activeModule === 'ai_assistant' && dentista && (
+                <AiAssistantModule patients={patients} procedures={procedures} />
+              )}
+            </>
+          )}
         </main>
       </div>
     </div>

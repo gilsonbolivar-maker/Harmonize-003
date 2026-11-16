@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Patient, FaceMapPoint, AnamnesisData, ClinicalRecord } from '../types';
 import { FaceMapStudio } from './FaceMapStudio';
 import {
@@ -26,6 +26,13 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('todos');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
+
+  useEffect(() => {
+    setSelectedPatient((atual) => {
+      if (!atual) return patients[0] || null;
+      return patients.find((p) => p.id === atual.id) || patients[0] || null;
+    });
+  }, [patients]);
   const [activeTab, setActiveTab] = useState<'anamnese' | 'mapa' | 'fotos' | 'tcle'>('anamnese');
   const [isCreatingPatient, setIsCreatingPatient] = useState(false);
   const [isEditingPatient, setIsEditingPatient] = useState(false);
@@ -81,7 +88,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
       gender: 'Feminino',
       tag: 'novo',
       createdAt: new Date().toISOString().split('T')[0],
-      avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+      avatarUrl: '',
       consentSigned: false,
       anamnesis: {
         skinType: 'Mista',
@@ -97,8 +104,8 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
         alcoholFrequency: 'Socialmente',
         sunExposure: 'Moderada',
         waterIntakeLitersPerDay: 2.0,
-        mainConcerns: ['Harmonização Facial e Linhas de Expressão'],
-        aestheticGoals: 'Rejuvenescimento e contorno natural'
+        mainConcerns: [],
+        aestheticGoals: ''
       }
     });
     setIsCreatingPatient(true);
@@ -229,11 +236,17 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                       isSelected ? 'bg-[#F1F5F9] border-l-4 border-l-[#2563EB]' : ''
                     }`}
                   >
-                    <img
-                      src={p.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                      alt={p.name}
-                      className="w-11 h-11 rounded-full object-cover border border-[#CBD5E1] shrink-0"
-                    />
+                    {p.avatarUrl ? (
+                      <img
+                        src={p.avatarUrl}
+                        alt={p.name}
+                        className="w-11 h-11 rounded-full object-cover border border-[#CBD5E1] shrink-0"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-[#4A5D3A] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        {p.name.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1.5">
                         <h4 className="font-semibold text-[#0F172A] text-xs truncate min-w-0" title={p.name}>
@@ -253,7 +266,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                         <span className="truncate">{p.phone}</span>
                       </p>
                       <p className="text-[11px] text-[#64748B] mt-1 truncate">
-                        {p.anamnesis.mainConcerns?.[0] || 'Harmonização & Botox'}
+                        {p.prontuarioPreenchido ? (p.anamnesis.mainConcerns?.[0] || 'Anamnese sem queixa') : 'Prontuário ainda não preenchido'}
                       </p>
                     </div>
                   </div>
@@ -270,11 +283,17 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
             <div className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-[#CBD5E1]">
                 <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1 w-full md:w-auto">
-                  <img
-                    src={selectedPatient.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                    alt={selectedPatient.name}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-[#CBD5E1] shadow-2xs shrink-0"
-                  />
+                  {selectedPatient.avatarUrl ? (
+                    <img
+                      src={selectedPatient.avatarUrl}
+                      alt={selectedPatient.name}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-[#CBD5E1] shadow-2xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#4A5D3A] text-white flex items-center justify-center text-lg font-bold shrink-0">
+                      {selectedPatient.name.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-serif italic text-xl sm:text-2xl text-[#0F172A] break-words hyphens-auto font-bold max-w-full">
@@ -586,57 +605,9 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                   </button>
                 </div>
 
-                {/* Split Slider Comparison */}
-                <div className="relative w-full aspect-[16/9] max-h-[420px] rounded-3xl overflow-hidden shadow-inner border border-[#CBD5E1] select-none bg-[#112233]">
-                  {/* Before Image (Left Base) */}
-                  <img
-                    src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&auto=format&fit=crop&q=80"
-                    alt="Antes do Procedimento"
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                  <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-xs text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                    ANTES (Pré-Procedimento)
-                  </div>
-
-                  {/* After Image (Right Clipped) */}
-                  <div
-                    className="absolute inset-0 overflow-hidden"
-                    style={{ clipPath: `inset(0 0 0 ${splitSliderPos}%)` }}
-                  >
-                    <img
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80"
-                      alt="Depois do Procedimento"
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div className="absolute top-4 right-4 bg-[#2563EB]/90 backdrop-blur-xs text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                      DEPOIS (Pós-Harmonização)
-                    </div>
-                  </div>
-
-                  {/* Split Handle Bar */}
-                  <div
-                    className="absolute top-0 bottom-0 w-1 bg-white shadow-2xl cursor-ew-resize flex items-center justify-center"
-                    style={{ left: `${splitSliderPos}%` }}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-white shadow-lg border-2 border-[#2563EB] flex items-center justify-center text-[#2563EB] text-xs font-bold">
-                      ↔
-                    </div>
-                  </div>
-
-                  {/* Range Input for slider control */}
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={splitSliderPos}
-                    onChange={(e) => setSplitSliderPos(Number(e.target.value))}
-                    className="absolute inset-0 opacity-0 cursor-ew-resize w-full h-full"
-                  />
+                <div className="rounded-3xl border border-[#E8D8C3] bg-[#F5EFE6] p-8 text-center text-sm text-[#5C4033]">
+                  Nenhuma foto registrada para este paciente.
                 </div>
-
-                <p className="text-center text-xs text-[#64748B]">
-                  Deslize para a esquerda e direita para comparar o alinhamento da linha de mandíbula, malar e sustentação.
-                </p>
               </div>
             )}
 

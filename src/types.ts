@@ -58,12 +58,16 @@ export interface Patient {
   anamnesis: AnamnesisData;
   generalNotes?: string;
   consentSigned: boolean;
+  /** Falso quando ainda não há anamnese gravada no prontuário. */
+  prontuarioPreenchido?: boolean;
 }
 
 export interface ProcedureCatalogItem {
   id: string;
   name: string;
-  category: 'harmonizacao' | 'botox' | 'bioestimuladores' | 'fios' | 'skincare_peeling' | 'corporal';
+  category: 'harmonizacao' | 'botox' | 'bioestimuladores' | 'fios' | 'skincare_peeling' | 'corporal' | 'estetica' | 'odontologia';
+  /** Área da clínica (Estética ou Odontologia), vinda de clinica_servicos. */
+  area?: 'Estética' | 'Odontologia';
   defaultPrice: number;
   costPrice: number;
   durationMinutes: number;
@@ -74,7 +78,16 @@ export interface ProcedureCatalogItem {
   suggestedProducts: string[];
 }
 
-export type AppointmentStatus = 'agendado' | 'confirmado' | 'em_atendimento' | 'concluido' | 'retorno_pendente' | 'cancelado';
+export type AppointmentStatus =
+  | 'agendado'
+  | 'confirmado'
+  | 'em_atendimento'
+  | 'concluido'
+  | 'retorno_pendente'
+  | 'cancelado'
+  | 'marcado'
+  | 'atendido'
+  | 'faltou';
 
 export interface Appointment {
   id: string;
@@ -91,6 +104,7 @@ export interface Appointment {
   durationMinutes: number;
   status: AppointmentStatus;
   notes?: string;
+  anotacaoAtendimento?: string;
   totalPrice: number;
   paymentStatus: 'pago' | 'pendente' | 'parcial';
   paymentMethod?: 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'boleto' | 'transferencia';

@@ -20,11 +20,8 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({
 
   // Post Care State
   const [selectedPatientId, setSelectedPatientId] = useState<string>(patients[0]?.id || '');
-  const [selectedProcedures, setSelectedProcedures] = useState<string[]>([
-    'Toxina Botulínica (Botox)',
-    'Preenchimento Labial com Ácido Hialurônico'
-  ]);
-  const [specificNotes, setSpecificNotes] = useState<string>('Pele sensível com pequeno hematoma no lábio superior.');
+  const [selectedProcedures, setSelectedProcedures] = useState<string[]>([]);
+  const [specificNotes, setSpecificNotes] = useState<string>('');
   const [loadingPostCare, setLoadingPostCare] = useState(false);
   const [postCareResult, setPostCareResult] = useState<any>(null);
   const [copiedPostCare, setCopiedPostCare] = useState(false);
@@ -32,9 +29,7 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({
   // Protocol Generator State
   const [patientAge, setPatientAge] = useState<number>(38);
   const [patientGender, setPatientGender] = useState<string>('Feminino');
-  const [patientConcerns, setPatientConcerns] = useState<string>(
-    'Rugas glabelares e testa, perda de volume na maçã do rosto (malar) e flacidez leve no terço inferior.'
-  );
+  const [patientConcerns, setPatientConcerns] = useState<string>('');
   const [patientBudgetPreference, setPatientBudgetPreference] = useState<'moderado' | 'completo_full_face'>('completo_full_face');
   const [loadingProtocol, setLoadingProtocol] = useState(false);
   const [protocolResult, setProtocolResult] = useState<any>(null);
@@ -128,8 +123,8 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({
             <h3 className="font-serif italic text-2xl text-white">
               Assistente de Protocolos & Pós-Procedimento
             </h3>
-            <p className="text-xs text-[#64748B] mt-1 font-light max-w-xl">
-              Gere orientações pós-atendimento para WhatsApp e sugestões de protocolos de Harmonização Facial baseados nas queixas do paciente.
+            <p className="text-xs text-[#E8D8C3] mt-1 font-light max-w-xl">
+              Orientações de pós-cuidado e protocolos. A chave da IA fica no servidor e não vai para o GitHub Pages: nesta página publicada o assistente avisa se o servidor não estiver no ar.
             </p>
           </div>
 

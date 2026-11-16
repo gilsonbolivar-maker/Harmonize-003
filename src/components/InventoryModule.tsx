@@ -31,8 +31,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     currentStock: 10,
     minStock: 4,
     unit: 'frascos',
-    costPerUnit: 500,
-    sellPriceSuggested: 1800,
+    costPerUnit: 0,
+    sellPriceSuggested: 0,
     lotNumber: 'LOTE-2025',
     expirationDate: '2026-12-31'
   });
@@ -57,8 +57,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       currentStock: 10,
       minStock: 4,
       unit: 'frascos',
-      costPerUnit: 520,
-      sellPriceSuggested: 1800,
+      costPerUnit: 0,
+      sellPriceSuggested: 0,
       lotNumber: `LOTE-${new Date().getFullYear()}`,
       expirationDate: '2027-01-01'
     });

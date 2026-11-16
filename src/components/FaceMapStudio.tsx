@@ -84,7 +84,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const [activeDose, setActiveDose] = useState<number>(4);
   const [activeDepth, setActiveDepth] = useState<InjectionDepth>('intradermico');
   const [activeTool, setActiveTool] = useState<InjectionTool>('agulha_32g');
-  const [activeLot, setActiveLot] = useState<string>('BTX-LOTE-2025');
+  const [activeLot, setActiveLot] = useState<string>('');
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
 
   // Flash notification helper
@@ -664,28 +664,19 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
           </button>
         </div>
 
-        {/* Anatomical Face Canvas */}
-        <div className="relative w-full max-w-[380px] sm:max-w-[440px] aspect-[3/4] bg-white rounded-3xl shadow-inner border border-[#CBD5E1] select-none flex items-center justify-center touch-manipulation overflow-hidden">
-          {/* 1. CLINICAL ANATOMICAL FACE MODEL IMAGE OR CUSTOM PATIENT PHOTO */}
-          {customPhotoUrl ? (
-            <img
-              src={customPhotoUrl}
-              alt="Foto do Paciente"
-              style={{ opacity: modelOpacity / 100 }}
-              className="absolute inset-0 w-full h-full object-cover rounded-3xl pointer-events-none select-none"
-            />
-          ) : (
-            <img
-              src="/assets/aistudio/IMG_4135_c0b6eed1.jpeg"
-              alt="Mapa Facial Anatômico"
-              style={{ opacity: modelOpacity / 100 }}
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none mix-blend-multiply"
-            />
-          )}
+        {/* Face única — a imagem inteira, sem corte, para mulher e homem */}
+        <div className="relative w-full max-w-[560px] mx-auto bg-white rounded-3xl shadow-inner border border-[#E8D8C3] select-none touch-manipulation">
+          <img
+            src={customPhotoUrl || `${import.meta.env.BASE_URL}face-feminina.jpg`}
+            alt="Face para marcação de pontos de botox"
+            style={{ opacity: modelOpacity / 100 }}
+            className="block w-full h-auto object-contain pointer-events-none select-none"
+          />
 
           <svg
             viewBox="0 0 400 533"
-            className={`relative z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
+            preserveAspectRatio="none"
+            className={`absolute inset-0 z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
             onClick={handleFaceClick}
             onTouchStart={handleFaceTouch}
           >
@@ -876,7 +867,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
                 Sumário de Injetáveis
               </h4>
               <span className="text-[11px] text-[#64748B] font-medium">
-                {customPhotoUrl ? 'Foto Real do Paciente' : 'Modelo: Anatômico Clínico'}
+                {customPhotoUrl ? 'Foto do paciente' : 'Face única, mulher e homem'}
               </span>
             </div>
 
