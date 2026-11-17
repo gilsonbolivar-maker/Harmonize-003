@@ -26,3 +26,7 @@ Com `false`, somem da interface (computador e celular, para a Jimena e para a se
 Não precisa descomentar nada. O menu volta em `src/App.tsx` e a auditoria em `src/components/PatientsModule.tsx`. As rotas em `server.ts` (`/api/ai/post-care`, `/api/ai/protocol-suggestion`, `/api/ai/anamnesis-risk`) ficaram como estavam: no GitHub Pages elas não rodam, então a IA só responde com esse servidor no ar.
 
 O service worker (vite-plugin-pwa, `registerType: 'autoUpdate'`) não tem um número de versão manual. O cache usa o hash de cada arquivo. Uma publicação nova troca o hash e o app instalado atualiza sozinho.
+
+## Versão
+
+O número da versão fica em `src/lib/config.ts` (`VERSAO`) e aparece no canto inferior direito de todas as telas. Suba o número a cada entrega.
