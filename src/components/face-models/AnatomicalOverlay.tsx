@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pt, curvaDeformada, elipseDeformada } from '../../lib/molde';
 
 export interface LandmarkDot {
   id: string;
@@ -94,6 +95,8 @@ interface AnatomicalOverlayProps {
   onSelectLandmark?: (landmark: LandmarkDot) => void;
   hoveredLandmarkId?: string | null;
   setHoveredLandmarkId?: (id: string | null) => void;
+  /** Molde elástico: leva cada ponto do desenho padrão para o lugar dele na foto */
+  deformar?: (p: Pt) => Pt;
 }
 
 export const AnatomicalOverlay: React.FC<AnatomicalOverlayProps> = ({
@@ -101,64 +104,77 @@ export const AnatomicalOverlay: React.FC<AnatomicalOverlayProps> = ({
   showLandmarks,
   onSelectLandmark,
   hoveredLandmarkId,
-  setHoveredLandmarkId
+  setHoveredLandmarkId,
+  deformar
 }) => {
+  // Sem molde, cada ponto fica onde está no desenho padrão
+  const w = deformar || ((p: Pt) => p);
+  const linha = (a: Pt, b: Pt, passos = 10) =>
+    Array.from({ length: passos + 1 }, (_, i) => {
+      const t = i / passos;
+      const [x, y] = w([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+  const poligono = (pts: Pt[]) => {
+    const fechado = [...pts, pts[0]];
+    return fechado.slice(0, -1).map((p, i) => linha(p, fechado[i + 1], 6)).join(' ');
+  };
+
   return (
     <g id="anatomical-layer-group" className="pointer-events-auto">
-      {/* 1. GEOMETRIC VECTORS & BUTTERFLY GUIDE LINES */}
+      {/* 1. LINHAS GUIA (borboleta, órbitas, sulcos, mandíbula, pescoço) */}
       {showGuidelines && (
-        <g id="facial-vectors" stroke="#3b82f6" strokeOpacity="0.45" strokeWidth="0.85" fill="none">
-          {/* Superior Frontal Arch */}
-          <path d="M 104 105 C 140 78, 260 78, 296 105" strokeDasharray="3 2" />
-          <line x1="200" y1="22" x2="200" y2="505" stroke="#94a3b8" strokeDasharray="4 4" strokeWidth="0.75" />
+        <g id="facial-vectors" stroke="#3b82f6" strokeOpacity="0.45" strokeWidth="0.85" fill="none" strokeLinejoin="round">
+          {/* Arco frontal superior */}
+          <polyline points={curvaDeformada(w, [[[104, 105], [140, 78], [260, 78], [296, 105]]])} strokeDasharray="3 2" />
+          <polyline points={linha([200, 22], [200, 505], 30)} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth="0.75" />
 
-          {/* Butterfly Glabella & Forehead Wings */}
-          <path d="M 200 185 C 182 145, 128 100, 108 130 C 98 148, 112 175, 162 184 C 182 188, 200 185, 200 185 Z" />
-          <path d="M 200 185 C 218 145, 272 100, 292 130 C 302 148, 288 175, 238 184 C 218 188, 200 185, 200 185 Z" />
+          {/* Borboleta da glabela e da testa */}
+          <polygon points={curvaDeformada(w, [[[200, 185], [182, 145], [128, 100], [108, 130]], [[98, 148], [112, 175], [162, 184]], [[182, 188], [200, 185], [200, 185]]])} />
+          <polygon points={curvaDeformada(w, [[[200, 185], [218, 145], [272, 100], [292, 130]], [[302, 148], [288, 175], [238, 184]], [[218, 188], [200, 185], [200, 185]]])} />
 
-          {/* Glabella to Corrugator Vectors */}
-          <line x1="200" y1="192" x2="178" y2="192" />
-          <line x1="200" y1="192" x2="222" y2="192" />
-          <line x1="178" y1="192" x2="152" y2="182" />
-          <line x1="222" y1="192" x2="248" y2="182" />
+          {/* Vetores da glabela para os corrugadores */}
+          <polyline points={linha([200, 192], [178, 192])} />
+          <polyline points={linha([200, 192], [222, 192])} />
+          <polyline points={linha([178, 192], [152, 182])} />
+          <polyline points={linha([222, 192], [248, 182])} />
 
-          {/* Concentric Orbicularis Oculi Arcs (Left Eye) */}
-          <ellipse cx="142" cy="219" rx="48" ry="26" stroke="#d946ef" strokeOpacity="0.4" strokeDasharray="3 3" />
-          <path d="M 96 205 C 88 225, 104 248, 142 252" stroke="#d946ef" strokeOpacity="0.5" />
+          {/* Órbita D */}
+          <polygon points={elipseDeformada(w, 142, 219, 48, 26)} stroke="#d946ef" strokeOpacity="0.4" strokeDasharray="3 3" />
+          <polyline points={curvaDeformada(w, [[[96, 205], [88, 225], [104, 248], [142, 252]]])} stroke="#d946ef" strokeOpacity="0.5" />
 
-          {/* Concentric Orbicularis Oculi Arcs (Right Eye) */}
-          <ellipse cx="258" cy="219" rx="48" ry="26" stroke="#d946ef" strokeOpacity="0.4" strokeDasharray="3 3" />
-          <path d="M 304 205 C 312 225, 296 248, 258 252" stroke="#d946ef" strokeOpacity="0.5" />
+          {/* Órbita E */}
+          <polygon points={elipseDeformada(w, 258, 219, 48, 26)} stroke="#d946ef" strokeOpacity="0.4" strokeDasharray="3 3" />
+          <polyline points={curvaDeformada(w, [[[304, 205], [312, 225], [296, 248], [258, 252]]])} stroke="#d946ef" strokeOpacity="0.5" />
 
-          {/* Paranasal & Nasolabial Diamond */}
-          <polygon points="200,232 174,290 200,302 226,290" stroke="#16a34a" strokeOpacity="0.5" />
-          <path d="M 170 294 C 156 318, 148 348, 144 368" stroke="#ea580c" strokeOpacity="0.5" />
-          <path d="M 230 294 C 244 318, 252 348, 256 368" stroke="#ea580c" strokeOpacity="0.5" />
+          {/* Losango paranasal e sulcos */}
+          <polygon points={poligono([[200, 232], [174, 290], [200, 302], [226, 290]])} stroke="#16a34a" strokeOpacity="0.5" />
+          <polyline points={curvaDeformada(w, [[[170, 294], [156, 318], [148, 348], [144, 368]]])} stroke="#ea580c" strokeOpacity="0.5" />
+          <polyline points={curvaDeformada(w, [[[230, 294], [244, 318], [252, 348], [256, 368]]])} stroke="#ea580c" strokeOpacity="0.5" />
 
-          {/* Zygomatic Traction Vectors (Malar) */}
-          <line x1="94" y1="226" x2="162" y2="292" stroke="#ea580c" strokeOpacity="0.45" strokeDasharray="2 2" />
-          <line x1="306" y1="226" x2="238" y2="292" stroke="#ea580c" strokeOpacity="0.45" strokeDasharray="2 2" />
+          {/* Vetores zigomáticos (malar) */}
+          <polyline points={linha([94, 226], [162, 292])} stroke="#ea580c" strokeOpacity="0.45" strokeDasharray="2 2" />
+          <polyline points={linha([306, 226], [238, 292])} stroke="#ea580c" strokeOpacity="0.45" strokeDasharray="2 2" />
 
-          {/* Mandibular / Masseter / Marionette Lines */}
-          <path d="M 114 335 C 122 375, 156 410, 200 410 C 244 410, 278 375, 286 335" stroke="#ea580c" strokeOpacity="0.4" />
-          <circle cx="200" cy="389" r="24" stroke="#7c3aed" strokeOpacity="0.5" strokeDasharray="3 2" />
-          <line x1="200" y1="365" x2="200" y2="413" stroke="#7c3aed" strokeOpacity="0.5" />
-          <line x1="176" y1="389" x2="224" y2="389" stroke="#7c3aed" strokeOpacity="0.5" />
+          {/* Mandíbula, masseter e marionete */}
+          <polyline points={curvaDeformada(w, [[[114, 335], [122, 375], [156, 410], [200, 410]], [[244, 410], [278, 375], [286, 335]]])} stroke="#ea580c" strokeOpacity="0.4" />
+          <polygon points={elipseDeformada(w, 200, 389, 24, 24)} stroke="#7c3aed" strokeOpacity="0.5" strokeDasharray="3 2" />
+          <polyline points={linha([200, 365], [200, 413])} stroke="#7c3aed" strokeOpacity="0.5" />
+          <polyline points={linha([176, 389], [224, 389])} stroke="#7c3aed" strokeOpacity="0.5" />
 
-          {/* Neck / Platysmal Band Tension Lines */}
-          <line x1="140" y1="420" x2="148" y2="485" stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
-          <line x1="176" y1="425" x2="178" y2="490" stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
-          <line x1="224" y1="425" x2="222" y2="490" stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
-          <line x1="260" y1="420" x2="252" y2="485" stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
+          {/* Pescoço / bandas do platisma */}
+          <polyline points={linha([140, 420], [148, 485])} stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
+          <polyline points={linha([176, 425], [178, 490])} stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
+          <polyline points={linha([224, 425], [222, 490])} stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
+          <polyline points={linha([260, 420], [252, 485])} stroke="#7c3aed" strokeOpacity="0.35" strokeDasharray="2 2" />
         </g>
       )}
 
-      {/* 2. STANDARDIZED CLINICAL LANDMARKS */}
+      {/* 2. PONTOS ANATÔMICOS DE REFERÊNCIA */}
       {showLandmarks && (
         <g id="anatomical-dots">
           {ANATOMICAL_LANDMARKS.map((lm) => {
-            const svgX = (lm.x / 100) * 400;
-            const svgY = (lm.y / 100) * 533;
+            const [svgX, svgY] = w([(lm.x / 100) * 400, (lm.y / 100) * 533]);
             const isHovered = hoveredLandmarkId === lm.id;
 
             return (
@@ -168,42 +184,17 @@ export const AnatomicalOverlay: React.FC<AnatomicalOverlayProps> = ({
                 className="cursor-pointer transition-all duration-150 group"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelectLandmark?.(lm);
+                  // o ponto marcado vai para onde o ponto está na foto (já moldado)
+                  onSelectLandmark?.({ ...lm, x: (svgX / 400) * 100, y: (svgY / 533) * 100 });
                 }}
                 onMouseEnter={() => setHoveredLandmarkId?.(lm.id)}
                 onMouseLeave={() => setHoveredLandmarkId?.(null)}
               >
-                {/* Glow ring on hover */}
                 {isHovered && (
-                  <circle
-                    cx={svgX}
-                    cy={svgY}
-                    r="8"
-                    fill={lm.color}
-                    fillOpacity="0.3"
-                    stroke={lm.color}
-                    strokeWidth="1.5"
-                    className="animate-ping"
-                  />
+                  <circle cx={svgX} cy={svgY} r="8" fill={lm.color} fillOpacity="0.3" stroke={lm.color} strokeWidth="1.5" className="animate-ping" />
                 )}
-
-                {/* Outer Ring */}
-                <circle
-                  cx={svgX}
-                  cy={svgY}
-                  r={isHovered ? "5.5" : "4"}
-                  fill="#ffffff"
-                  stroke={lm.color}
-                  strokeWidth="1.8"
-                />
-
-                {/* Inner Core */}
-                <circle
-                  cx={svgX}
-                  cy={svgY}
-                  r={isHovered ? "3.2" : "2.2"}
-                  fill={lm.color}
-                />
+                <circle cx={svgX} cy={svgY} r={isHovered ? '5.5' : '4'} fill="#ffffff" stroke={lm.color} strokeWidth="1.8" />
+                <circle cx={svgX} cy={svgY} r={isHovered ? '3.2' : '2.2'} fill={lm.color} />
               </g>
             );
           })}

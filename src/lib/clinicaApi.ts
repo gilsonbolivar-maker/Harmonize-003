@@ -568,6 +568,8 @@ export interface AjusteFoto {
   y: number;    // deslocamento vertical, em % da altura do quadro
   zoom: number; // 1 = tamanho original
   giro: number; // graus
+  /** Molde elástico: posição de cada alça (olhos, nariz, boca…) na foto, no espaço 400x533 */
+  molde?: Record<string, [number, number]>;
 }
 export const AJUSTE_PADRAO: AjusteFoto = { x: 0, y: 0, zoom: 1, giro: 0 };
 

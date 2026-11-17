@@ -55,6 +55,9 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
   const [verPontos, setVerPontos] = useState(true);
   const [tirada, setTirada] = useState<{ arquivo: File; url: string } | null>(null);
   const [tentativa, setTentativa] = useState(0);
+  // Zoom digital: deixa segurar o aparelho mais longe do rosto.
+  // De perto, a lente grande-angular afina o rosto e aumenta o nariz.
+  const [zoom, setZoom] = useState(1.6);
 
   useEffect(() => {
     let vivo = true;
@@ -95,6 +98,9 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
     let sw = vw, sh = vh, sx = 0, sy = 0;
     if (vw / vh > 3 / 4) { sh = vh; sw = vh * 3 / 4; sx = (vw - sw) / 2; }
     else { sw = vw; sh = vw * 4 / 3; sy = (vh - sh) / 2; }
+    // aplica o zoom: pega só o miolo, igual ao que a tela mostra
+    const cw = sw / zoom, ch = sh / zoom;
+    sx += (sw - cw) / 2; sy += (sh - ch) / 2; sw = cw; sh = ch;
     const alt = Math.min(1600, Math.round(sh));
     const larg = Math.round(alt * 3 / 4);
     const c = document.createElement('canvas');
@@ -151,7 +157,7 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
             muted
             onPlaying={() => setPronta(true)}
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ transform: frente ? 'scaleX(-1)' : undefined }}
+            style={{ transform: `scale(${zoom})${frente ? ' scaleX(-1)' : ''}`, transformOrigin: 'center' }}
           />
           {avaliacao && <GradeAvaliacao forte />}
           {/* Desenho do rosto como guia */}
@@ -193,6 +199,14 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
             <input type="checkbox" checked={verPontos} onChange={(e) => setVerPontos(e.target.checked)} /> Pontos
           </label>
         </div>}
+        {!tirada && (
+          <div className="flex items-center gap-3 text-xs">
+            <span className="w-20">Aproximar</span>
+            <input type="range" min={100} max={300} step={10} value={Math.round(zoom * 100)} onChange={(e) => setZoom(Number(e.target.value) / 100)} className="flex-1" />
+            <span className="w-10 text-right font-bold">{zoom.toFixed(1)}x</span>
+          </div>
+        )}
+        {!tirada && <p className="text-[11px] opacity-75 text-center">Segure o aparelho a uns 60 cm a 1 metro do rosto e use "Aproximar". De muito perto o rosto sai mais fino e o nariz maior.</p>}
         {tirada ? (
           <div className="flex items-center gap-3">
             <button type="button" onClick={tirarOutra} className="flex-1 py-3 rounded-full bg-white/15 text-sm font-semibold inline-flex items-center justify-center gap-2">

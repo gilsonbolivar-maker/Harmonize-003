@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AJUSTE_PADRAO, AjusteFoto, carregarFotoMapa, enviarFotoMapa, removerFotoMapa, salvarAjusteFotoMapa } from '../lib/clinicaApi';
 import { FaceMapPoint, ProductType, InjectionDepth, InjectionTool } from '../types';
 import { AnatomicalOverlay, LandmarkDot } from './face-models/AnatomicalOverlay';
 import { CameraComPontos } from './CameraComPontos';
+import { ALCAS, Molde, Pt, criarDeformacao, moldeEhPadrao, moldePadrao } from '../lib/molde';
 import {
   Trash2,
   Shield,
@@ -100,6 +101,10 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const [ajustando, setAjustando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [cameraAberta, setCameraAberta] = useState(false);
+  const [moldando, setMoldando] = useState(false);
+  const [alcaArrastada, setAlcaArrastada] = useState<string | null>(null);
+  const deformar = useMemo(() => criarDeformacao(ajuste.molde), [ajuste.molde]);
+  const temMolde = !moldeEhPadrao(ajuste.molde);
   const quadroRef = useRef<HTMLDivElement>(null);
   const dedos = useRef(new Map<number, { x: number; y: number }>());
   const gesto = useRef<{ ajuste: AjusteFoto; dist: number; ang: number; cx: number; cy: number } | null>(null);
@@ -125,7 +130,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   // Foto do paciente salva no banco, com o ajuste (posição, tamanho e giro)
   useEffect(() => {
     let vivo = true;
-    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false);
+    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false); setMoldando(false);
     if (!pacienteId) return;
     carregarFotoMapa(pacienteId)
       .then((f) => {
@@ -142,6 +147,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
       y: Math.max(-100, Math.min(100, novo.y)),
       zoom: Math.max(0.3, Math.min(4, novo.zoom)),
       giro: Math.max(-180, Math.min(180, novo.giro)),
+      ...(novo.molde ? { molde: novo.molde } : {}),
     };
     setAjuste(limpo);
     if (pacienteId && fotoCaminho) {
@@ -211,8 +217,28 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
     .filter(p => p.productType === 'fios_pdo')
     .reduce((sum, p) => sum + (p.doseValue || 0), 0);
 
+  // Molde elástico: arrastar as alças sobre o rosto do paciente
+  const pontoNoDesenho = (clientX: number, clientY: number, svg: SVGSVGElement): Pt => {
+    const r = svg.getBoundingClientRect();
+    return [
+      Math.max(0, Math.min(400, ((clientX - r.left) / r.width) * 400)),
+      Math.max(0, Math.min(533, ((clientY - r.top) / r.height) * 533)),
+    ];
+  };
+  const moverAlca = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!moldando || !alcaArrastada) return;
+    const molde: Molde = { ...(ajuste.molde || moldePadrao()) };
+    molde[alcaArrastada] = pontoNoDesenho(e.clientX, e.clientY, e.currentTarget);
+    mudarAjuste({ ...ajuste, molde });
+  };
+  const comecarMolde = () => {
+    setAjustando(false);
+    setModelOpacity(0); // o desenho fixo não acompanha o molde
+    setMoldando(true);
+  };
+
   const addPointAtCoords = (clientX: number, clientY: number, targetSvg: SVGSVGElement) => {
-    if (readOnly) return;
+    if (readOnly || moldando) return;
     const rect = targetSvg.getBoundingClientRect();
     const x = Math.max(0, Math.min(100, Math.round(((clientX - rect.left) / rect.width) * 100)));
     const y = Math.max(0, Math.min(100, Math.round(((clientY - rect.top) / rect.height) * 100)));
@@ -366,7 +392,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
       try { await removerFotoMapa(pacienteId, fotoCaminho); }
       catch { notify('Não consegui remover a foto.'); return; }
     }
-    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false); setModelOpacity(100);
+    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false); setMoldando(false); setModelOpacity(100);
   };
 
   // Presets & Protocol Center
@@ -717,10 +743,20 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
                 onFoto={(arq) => { setCameraAberta(false); usarFoto(arq, false); }}
               />
             )}
+            {customPhotoUrl && !readOnly && (
+              <button
+                type="button"
+                onClick={() => (moldando ? setMoldando(false) : comecarMolde())}
+                className={`px-2.5 py-1 rounded-xl font-semibold border flex items-center gap-1.5 ${moldando ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-violet-50 text-violet-900 border-violet-200'}`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {moldando ? 'Pronto' : 'Moldar Pontos'}
+              </button>
+            )}
             {customPhotoUrl && (
               <button
                 type="button"
-                onClick={() => setAjustando(!ajustando)}
+                onClick={() => { setMoldando(false); setAjustando(!ajustando); }}
                 className={`px-2.5 py-1 rounded-xl font-semibold border flex items-center gap-1.5 ${ajustando ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-amber-50 text-amber-900 border-amber-200'}`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -818,6 +854,17 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
         </div>
 
         {/* Face única — a imagem inteira, sem corte, para mulher e homem */}
+        {customPhotoUrl && moldando && (
+          <div className="w-full max-w-[560px] mx-auto mb-3 rounded-2xl border border-violet-200 bg-violet-50 p-3 space-y-2 text-xs text-violet-950">
+            <p className="font-semibold">Arraste cada alça roxa para o lugar dela no rosto do paciente.</p>
+            <p>Os olhos no centro de cada olho, a ponta do nariz, o centro da boca, o queixo, o meio da testa e as laterais do rosto. Todos os pontos e linhas acompanham, como se fossem de borracha.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => mudarAjuste({ ...ajuste, molde: moldePadrao() })} className="px-3 py-1.5 rounded-xl border border-violet-300 bg-white font-semibold">Voltar ao padrão</button>
+              <button type="button" onClick={() => setMoldando(false)} className="flex-1 px-3 py-1.5 rounded-xl bg-[#0F172A] text-white font-semibold">Pronto, marcar pontos</button>
+            </div>
+          </div>
+        )}
+
         {customPhotoUrl && ajustando && (
           <div className="w-full max-w-[560px] mx-auto mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs text-amber-950">
             <p className="font-semibold">Ajuste a foto até os olhos, o nariz e a boca ficarem sobre o desenho.</p>
@@ -858,7 +905,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
             src={`${import.meta.env.BASE_URL}face-feminina.jpg`}
             alt="Face para marcação de pontos de botox"
             draggable={false}
-            style={{ opacity: modelOpacity / 100, mixBlendMode: customPhotoUrl ? 'multiply' : undefined }}
+            style={{ opacity: customPhotoUrl && temMolde ? 0 : modelOpacity / 100, mixBlendMode: customPhotoUrl ? 'multiply' : undefined }}
             className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
           />
 
@@ -866,7 +913,12 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
             viewBox="0 0 400 533"
             preserveAspectRatio="none"
             className={`absolute inset-0 z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'} ${ajustando ? 'pointer-events-none' : ''}`}
+            style={{ touchAction: moldando ? 'none' : undefined }}
             onClick={handleFaceClick}
+            onPointerMove={moverAlca}
+            onPointerUp={() => setAlcaArrastada(null)}
+            onPointerCancel={() => setAlcaArrastada(null)}
+            onPointerLeave={() => setAlcaArrastada(null)}
           >
             <defs>
               <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -888,12 +940,36 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
 
             {/* 2. ANATOMICAL OVERLAY (BUTTERFLY GUIDELINES & CLINICAL LANDMARKS) */}
             <AnatomicalOverlay
-              showGuidelines={showGuidelines}
-              showLandmarks={showLandmarks}
-              onSelectLandmark={handleSelectLandmark}
+              showGuidelines={showGuidelines || moldando}
+              showLandmarks={showLandmarks || moldando}
+              onSelectLandmark={moldando ? undefined : handleSelectLandmark}
+              deformar={customPhotoUrl ? deformar : undefined}
               hoveredLandmarkId={hoveredLandmarkId}
               setHoveredLandmarkId={setHoveredLandmarkId}
             />
+
+            {/* ALÇAS DO MOLDE ELÁSTICO */}
+            {moldando && ALCAS.map((a) => {
+              const [x, y] = (ajuste.molde && ajuste.molde[a.id]) || a.base;
+              const ativa = alcaArrastada === a.id;
+              return (
+                <g
+                  key={a.id}
+                  className="cursor-grab"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    (e.currentTarget.ownerSVGElement as SVGSVGElement | null)?.setPointerCapture(e.pointerId);
+                    setAlcaArrastada(a.id);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <circle cx={x} cy={y} r={ativa ? 16 : 13} fill="#7c3aed" fillOpacity={0.18} />
+                  <circle cx={x} cy={y} r={ativa ? 8 : 6.5} fill="#ffffff" stroke="#7c3aed" strokeWidth={2.5} />
+                  <circle cx={x} cy={y} r={2} fill="#7c3aed" />
+                  <text x={x} y={y - 16} textAnchor="middle" fontSize="10" fontWeight="700" fill="#4c1d95" stroke="#ffffff" strokeWidth="3" paintOrder="stroke">{a.nome}</text>
+                </g>
+              );
+            })}
 
             {/* 3. ACTIVE INJECTION POINTS */}
             {filteredPoints.map((pt) => {
