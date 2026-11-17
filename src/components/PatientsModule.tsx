@@ -375,7 +375,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                   }`}
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  Galeria Antes & Depois
+                  Galeria de Fotos
                 </button>
                 <button
                   type="button"

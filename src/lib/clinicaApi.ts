@@ -483,8 +483,9 @@ export interface FotoPaciente {
   id: string;
   pacienteId: string;
   caminho: string;
-  tipo: 'antes' | 'depois';
+  tipo: 'registro' | 'antes' | 'depois';
   angulo: string;
+  marcacaoId: string | null;
   data: string;
   observacao: string | null;
   url: string;
@@ -495,7 +496,7 @@ const BUCKET_FOTOS = 'clinica-fotos';
 export async function carregarFotos(pacienteId: string): Promise<FotoPaciente[]> {
   const { data, error } = await supabase
     .from('clinica_fotos')
-    .select('id,paciente_id,caminho,tipo,angulo,data,observacao')
+    .select('id,paciente_id,caminho,tipo,angulo,data,observacao,marcacao_id')
     .eq('paciente_id', pacienteId)
     .order('data')
     .order('criado_em');
@@ -512,6 +513,7 @@ export async function carregarFotos(pacienteId: string): Promise<FotoPaciente[]>
     pacienteId: l.paciente_id,
     caminho: l.caminho,
     tipo: l.tipo,
+    marcacaoId: l.marcacao_id,
     angulo: l.angulo,
     data: l.data,
     observacao: l.observacao,
@@ -536,7 +538,7 @@ async function reduzirFoto(arquivo: File): Promise<Blob> {
 export async function enviarFoto(
   pacienteId: string,
   arquivo: File,
-  dados: { tipo: 'antes' | 'depois'; angulo: string; data: string; observacao: string },
+  dados: { tipo: 'registro' | 'antes' | 'depois'; angulo: string; data: string; observacao: string; marcacaoId: string | null },
 ): Promise<void> {
   const blob = await reduzirFoto(arquivo);
   const caminho = `${pacienteId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
@@ -546,6 +548,7 @@ export async function enviarFoto(
     paciente_id: pacienteId,
     caminho,
     tipo: dados.tipo,
+    marcacao_id: dados.marcacaoId,
     angulo: dados.angulo,
     data: dados.data,
     observacao: dados.observacao.trim() || null,
@@ -618,4 +621,27 @@ export async function removerFotoMapa(pacienteId: string, caminho: string): Prom
     .eq('paciente_id', pacienteId);
   if (error) throw new Error(mensagemErro(error));
   await supabase.storage.from(BUCKET_FOTOS).remove([caminho]);
+}
+
+// ---------- Visitas do paciente (marcações), para organizar a galeria ----------
+export interface VisitaPaciente {
+  id: string;
+  data: string; // AAAA-MM-DD, horário da Bahia
+  hora: string;
+  servico: string;
+  status: string;
+}
+
+export async function carregarVisitas(pacienteId: string): Promise<VisitaPaciente[]> {
+  const { data, error } = await supabase
+    .from('clinica_marcacoes')
+    .select('id,inicio,status,servico:clinica_servicos(nome)')
+    .eq('paciente_id', pacienteId)
+    .neq('status', 'cancelado')
+    .order('inicio', { ascending: false });
+  if (error) throw new Error(mensagemErro(error));
+  return ((data || []) as unknown as { id: string; inicio: string; status: string; servico: { nome: string } | null }[]).map((m) => {
+    const l = local(m.inicio);
+    return { id: m.id, data: l.data, hora: l.hora, servico: m.servico?.nome || 'Atendimento', status: m.status };
+  });
 }
