@@ -561,3 +561,59 @@ export async function apagarFoto(foto: FotoPaciente): Promise<void> {
   if (error) throw new Error(mensagemErro(error));
   await supabase.storage.from(BUCKET_FOTOS).remove([foto.caminho]);
 }
+
+// ---------- Foto do paciente no mapa facial (ajustada sobre os pontos) ----------
+export interface AjusteFoto {
+  x: number;    // deslocamento horizontal, em % da largura do quadro
+  y: number;    // deslocamento vertical, em % da altura do quadro
+  zoom: number; // 1 = tamanho original
+  giro: number; // graus
+}
+export const AJUSTE_PADRAO: AjusteFoto = { x: 0, y: 0, zoom: 1, giro: 0 };
+
+export async function carregarFotoMapa(pacienteId: string): Promise<{ url: string; caminho: string; ajuste: AjusteFoto } | null> {
+  const { data, error } = await supabase
+    .from('clinica_mapas_faciais')
+    .select('foto_caminho,foto_ajuste')
+    .eq('paciente_id', pacienteId)
+    .maybeSingle();
+  if (error) throw new Error(mensagemErro(error));
+  if (!data?.foto_caminho) return null;
+  const { data: link, error: erroLink } = await supabase.storage.from(BUCKET_FOTOS).createSignedUrl(data.foto_caminho, 60 * 60);
+  if (erroLink) throw new Error(mensagemErro(erroLink));
+  return { url: link.signedUrl, caminho: data.foto_caminho, ajuste: { ...AJUSTE_PADRAO, ...(data.foto_ajuste || {}) } };
+}
+
+export async function enviarFotoMapa(pacienteId: string, arquivo: File, caminhoAntigo: string | null): Promise<{ url: string; caminho: string }> {
+  const blob = await reduzirFoto(arquivo);
+  const caminho = `${pacienteId}/mapa-${Date.now()}.jpg`;
+  const { error } = await supabase.storage.from(BUCKET_FOTOS).upload(caminho, blob, { contentType: 'image/jpeg' });
+  if (error) throw new Error(mensagemErro(error));
+  const { error: erroLinha } = await supabase
+    .from('clinica_mapas_faciais')
+    .upsert({ paciente_id: pacienteId, foto_caminho: caminho, foto_ajuste: AJUSTE_PADRAO, atualizado_em: new Date().toISOString() });
+  if (erroLinha) {
+    await supabase.storage.from(BUCKET_FOTOS).remove([caminho]);
+    throw new Error(mensagemErro(erroLinha));
+  }
+  if (caminhoAntigo) await supabase.storage.from(BUCKET_FOTOS).remove([caminhoAntigo]);
+  const { data: link } = await supabase.storage.from(BUCKET_FOTOS).createSignedUrl(caminho, 60 * 60);
+  return { url: link?.signedUrl || URL.createObjectURL(blob), caminho };
+}
+
+export async function salvarAjusteFotoMapa(pacienteId: string, ajuste: AjusteFoto): Promise<void> {
+  const { error } = await supabase
+    .from('clinica_mapas_faciais')
+    .update({ foto_ajuste: ajuste, atualizado_em: new Date().toISOString() })
+    .eq('paciente_id', pacienteId);
+  if (error) throw new Error(mensagemErro(error));
+}
+
+export async function removerFotoMapa(pacienteId: string, caminho: string): Promise<void> {
+  const { error } = await supabase
+    .from('clinica_mapas_faciais')
+    .update({ foto_caminho: null, foto_ajuste: AJUSTE_PADRAO, atualizado_em: new Date().toISOString() })
+    .eq('paciente_id', pacienteId);
+  if (error) throw new Error(mensagemErro(error));
+  await supabase.storage.from(BUCKET_FOTOS).remove([caminho]);
+}

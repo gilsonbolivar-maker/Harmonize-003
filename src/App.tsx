@@ -407,6 +407,7 @@ export default function App() {
                       onChangePoints={(pts) => handleUpdateFaceMap(pacienteMapa.id, pts)}
                       patientName={pacienteMapa.name}
                       patientGender={pacienteMapa.gender}
+                      pacienteId={pacienteMapa.id}
                     />
                   ) : (
                     <p className="text-sm">Cadastre um paciente para marcar os pontos.</p>

@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { AJUSTE_PADRAO, AjusteFoto, carregarFotoMapa, enviarFotoMapa, removerFotoMapa, salvarAjusteFotoMapa } from '../lib/clinicaApi';
 import { FaceMapPoint, ProductType, InjectionDepth, InjectionTool } from '../types';
 import { AnatomicalOverlay, LandmarkDot } from './face-models/AnatomicalOverlay';
 import {
@@ -12,6 +13,7 @@ import {
   CheckCircle2,
   Download,
   Search,
+  SlidersHorizontal,
   X
 } from 'lucide-react';
 
@@ -21,6 +23,8 @@ interface FaceMapStudioProps {
   patientName?: string;
   patientGender?: 'Feminino' | 'Masculino' | 'Outro' | string;
   readOnly?: boolean;
+  /** Com o id do paciente, a foto e o ajuste dela ficam salvos no banco. */
+  pacienteId?: string;
 }
 
 const PRODUCT_COLORS: Record<ProductType, { bg: string; border: string; text: string; label: string; pinBg: string }> = {
@@ -78,7 +82,8 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   points = [],
   onChangePoints,
   patientName = "Paciente",
-  readOnly = false
+  readOnly = false,
+  pacienteId
 }) => {
   const safePoints = Array.isArray(points) ? points : [];
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +93,14 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const [showLandmarks, setShowLandmarks] = useState<boolean>(true);
   const [modelOpacity, setModelOpacity] = useState<number>(100);
   const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(null);
+  const [fotoCaminho, setFotoCaminho] = useState<string | null>(null);
+  const [ajuste, setAjuste] = useState<AjusteFoto>(AJUSTE_PADRAO);
+  const [ajustando, setAjustando] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const quadroRef = useRef<HTMLDivElement>(null);
+  const dedos = useRef(new Map<number, { x: number; y: number }>());
+  const gesto = useRef<{ ajuste: AjusteFoto; dist: number; ang: number; cx: number; cy: number } | null>(null);
+  const salvarAjusteTimer = useRef<number | undefined>(undefined);
 
   // Point Selection & Active Tool Setup
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -104,6 +117,78 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const notify = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 3000);
+  };
+
+  // Foto do paciente salva no banco, com o ajuste (posição, tamanho e giro)
+  useEffect(() => {
+    let vivo = true;
+    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false);
+    if (!pacienteId) return;
+    carregarFotoMapa(pacienteId)
+      .then((f) => {
+        if (!vivo || !f) return;
+        setCustomPhotoUrl(f.url); setFotoCaminho(f.caminho); setAjuste(f.ajuste); setModelOpacity(35);
+      })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, [pacienteId]);
+
+  const mudarAjuste = (novo: AjusteFoto) => {
+    const limpo = {
+      x: Math.max(-100, Math.min(100, novo.x)),
+      y: Math.max(-100, Math.min(100, novo.y)),
+      zoom: Math.max(0.3, Math.min(4, novo.zoom)),
+      giro: Math.max(-180, Math.min(180, novo.giro)),
+    };
+    setAjuste(limpo);
+    if (pacienteId && fotoCaminho) {
+      window.clearTimeout(salvarAjusteTimer.current);
+      salvarAjusteTimer.current = window.setTimeout(() => {
+        salvarAjusteFotoMapa(pacienteId, limpo).catch(() => notify('Não consegui salvar o ajuste da foto.'));
+      }, 700);
+    }
+  };
+
+  // Gestos sobre a foto: um dedo arrasta, dois dedos aumentam/diminuem e giram
+  const posDedo = (e: React.PointerEvent) => ({ x: e.clientX, y: e.clientY });
+  const iniciarGesto = () => {
+    const ps = [...dedos.current.values()];
+    const [a, b] = ps;
+    gesto.current = {
+      ajuste,
+      dist: b ? Math.hypot(b.x - a.x, b.y - a.y) : 0,
+      ang: b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+      cx: b ? (a.x + b.x) / 2 : a.x,
+      cy: b ? (a.y + b.y) / 2 : a.y,
+    };
+  };
+  const onDedoBaixo = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dedos.current.set(e.pointerId, posDedo(e));
+    iniciarGesto();
+  };
+  const onDedoMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dedos.current.has(e.pointerId) || !gesto.current || !quadroRef.current) return;
+    dedos.current.set(e.pointerId, posDedo(e));
+    const r = quadroRef.current.getBoundingClientRect();
+    const ps = [...dedos.current.values()];
+    const g = gesto.current;
+    const [a, b] = ps;
+    const cx = b ? (a.x + b.x) / 2 : a.x;
+    const cy = b ? (a.y + b.y) / 2 : a.y;
+    const novo = { ...g.ajuste, x: g.ajuste.x + ((cx - g.cx) / r.width) * 100, y: g.ajuste.y + ((cy - g.cy) / r.height) * 100 };
+    if (b && g.dist > 0) {
+      novo.zoom = g.ajuste.zoom * (Math.hypot(b.x - a.x, b.y - a.y) / g.dist);
+      novo.giro = g.ajuste.giro + ((Math.atan2(b.y - a.y, b.x - a.x) - g.ang) * 180) / Math.PI;
+    }
+    mudarAjuste(novo);
+  };
+  const onDedoCima = (e: React.PointerEvent<HTMLDivElement>) => {
+    dedos.current.delete(e.pointerId);
+    if (dedos.current.size) iniciarGesto(); else gesto.current = null;
+  };
+  const onRodinha = (e: React.WheelEvent<HTMLDivElement>) => {
+    mudarAjuste({ ...ajuste, zoom: ajuste.zoom * (e.deltaY < 0 ? 1.05 : 0.95) });
   };
 
   // Totals calculations
@@ -244,16 +329,37 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   };
 
   // Upload patient real photo
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setCustomPhotoUrl(event.target?.result as string);
-        notify("Foto do paciente carregada no studio.");
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+    if (!file) return;
+    if (!pacienteId) {
+      setCustomPhotoUrl(URL.createObjectURL(file));
+    } else {
+      setEnviandoFoto(true);
+      try {
+        const f = await enviarFotoMapa(pacienteId, file, fotoCaminho);
+        setCustomPhotoUrl(f.url); setFotoCaminho(f.caminho);
+      } catch (erro) {
+        notify('Não consegui salvar a foto: ' + (erro instanceof Error ? erro.message : ''));
+        return;
+      } finally {
+        setEnviandoFoto(false);
+      }
     }
+    setAjuste(AJUSTE_PADRAO);
+    setModelOpacity(35);
+    setAjustando(true);
+    notify('Foto carregada. Ajuste a foto sobre o desenho.');
+  };
+
+  const removerFoto = async () => {
+    if (!confirm('Remover a foto do paciente deste mapa? Os pontos continuam.')) return;
+    if (pacienteId && fotoCaminho) {
+      try { await removerFotoMapa(pacienteId, fotoCaminho); }
+      catch { notify('Não consegui remover a foto.'); return; }
+    }
+    setCustomPhotoUrl(null); setFotoCaminho(null); setAjuste(AJUSTE_PADRAO); setAjustando(false); setModelOpacity(100);
   };
 
   // Presets & Protocol Center
@@ -585,12 +691,22 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
               className="px-2.5 py-1 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#334155] rounded-xl border border-[#CBD5E1] font-medium flex items-center gap-1.5 transition-colors"
             >
               <Upload className="w-3.5 h-3.5 text-[#2563EB]" />
-              {customPhotoUrl ? 'Trocar Foto Real' : 'Foto do Paciente'}
+              {enviandoFoto ? 'Enviando foto…' : customPhotoUrl ? 'Trocar Foto' : 'Foto do Paciente'}
             </button>
             {customPhotoUrl && (
               <button
                 type="button"
-                onClick={() => setCustomPhotoUrl(null)}
+                onClick={() => setAjustando(!ajustando)}
+                className={`px-2.5 py-1 rounded-xl font-semibold border flex items-center gap-1.5 ${ajustando ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-amber-50 text-amber-900 border-amber-200'}`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                {ajustando ? 'Pronto' : 'Ajustar Foto'}
+              </button>
+            )}
+            {customPhotoUrl && (
+              <button
+                type="button"
+                onClick={removerFoto}
                 className="text-[10px] text-red-600 hover:underline"
               >
                 Remover Foto
@@ -600,10 +716,10 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
 
           {/* Opacity Slider */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#64748B] font-light">Opacidade Modelo:</span>
+            <span className="text-[11px] text-[#64748B] font-light">{customPhotoUrl ? 'Desenho sobre a foto:' : 'Opacidade Modelo:'}</span>
             <input
               type="range"
-              min="20"
+              min={customPhotoUrl ? '0' : '20'}
               max="100"
               value={modelOpacity}
               onChange={(e) => setModelOpacity(parseInt(e.target.value))}
@@ -678,18 +794,54 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
         </div>
 
         {/* Face única — a imagem inteira, sem corte, para mulher e homem */}
-        <div className="relative w-full max-w-[560px] mx-auto bg-white rounded-3xl shadow-inner border border-[#E8D8C3] select-none touch-manipulation">
+        {customPhotoUrl && ajustando && (
+          <div className="w-full max-w-[560px] mx-auto mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs text-amber-950">
+            <p className="font-semibold">Ajuste a foto até os olhos, o nariz e a boca ficarem sobre o desenho.</p>
+            <p>Um dedo arrasta a foto. Dois dedos aumentam, diminuem e giram. Enquanto ajusta, nenhum ponto é marcado.</p>
+            <label className="flex items-center gap-2">
+              <span className="w-14">Tamanho</span>
+              <input type="range" min={30} max={400} value={Math.round(ajuste.zoom * 100)}
+                onChange={(e) => mudarAjuste({ ...ajuste, zoom: Number(e.target.value) / 100 })} className="flex-1 accent-[#0F172A]" />
+              <span className="w-10 text-right font-bold">{Math.round(ajuste.zoom * 100)}%</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-14">Girar</span>
+              <input type="range" min={-45} max={45} value={Math.round(ajuste.giro)}
+                onChange={(e) => mudarAjuste({ ...ajuste, giro: Number(e.target.value) })} className="flex-1 accent-[#0F172A]" />
+              <span className="w-10 text-right font-bold">{Math.round(ajuste.giro)}°</span>
+            </label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => mudarAjuste(AJUSTE_PADRAO)} className="px-3 py-1.5 rounded-xl border border-amber-300 bg-white font-semibold">Voltar ao início</button>
+              <button type="button" onClick={() => setAjustando(false)} className="flex-1 px-3 py-1.5 rounded-xl bg-[#0F172A] text-white font-semibold">Pronto, marcar pontos</button>
+            </div>
+          </div>
+        )}
+
+        <div ref={quadroRef} className="relative w-full max-w-[560px] mx-auto aspect-[3/4] overflow-hidden bg-white rounded-3xl shadow-inner border border-[#E8D8C3] select-none touch-manipulation">
+          {customPhotoUrl && (
+            <img
+              src={customPhotoUrl}
+              alt={`Foto de ${patientName}`}
+              draggable={false}
+              style={{
+                transform: `translate(${ajuste.x}%, ${ajuste.y}%) rotate(${ajuste.giro}deg) scale(${ajuste.zoom})`,
+                transformOrigin: 'center',
+              }}
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+            />
+          )}
           <img
-            src={customPhotoUrl || `${import.meta.env.BASE_URL}face-feminina.jpg`}
+            src={`${import.meta.env.BASE_URL}face-feminina.jpg`}
             alt="Face para marcação de pontos de botox"
-            style={{ opacity: modelOpacity / 100 }}
-            className="block w-full h-auto object-contain pointer-events-none select-none"
+            draggable={false}
+            style={{ opacity: modelOpacity / 100, mixBlendMode: customPhotoUrl ? 'multiply' : undefined }}
+            className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
           />
 
           <svg
             viewBox="0 0 400 533"
             preserveAspectRatio="none"
-            className={`absolute inset-0 z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
+            className={`absolute inset-0 z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'} ${ajustando ? 'pointer-events-none' : ''}`}
             onClick={handleFaceClick}
           >
             <defs>
@@ -776,6 +928,19 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
               );
             })}
           </svg>
+
+          {/* Camada de gestos para ajustar a foto (só no modo de ajuste) */}
+          {customPhotoUrl && ajustando && (
+            <div
+              className="absolute inset-0 z-20 cursor-move"
+              style={{ touchAction: 'none' }}
+              onPointerDown={onDedoBaixo}
+              onPointerMove={onDedoMove}
+              onPointerUp={onDedoCima}
+              onPointerCancel={onDedoCima}
+              onWheel={onRodinha}
+            />
+          )}
 
           {/* Flash Notification Toast */}
           {notificationMsg && (

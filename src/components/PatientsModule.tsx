@@ -581,6 +581,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                   points={faceMapRecords[selectedPatient.id] || []}
                   onChangePoints={(pts) => onUpdateFaceMap(selectedPatient.id, pts)}
                   patientName={selectedPatient.name}
+                  pacienteId={selectedPatient.id}
                 />
               </div>
             )}
