@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AJUSTE_PADRAO, AjusteFoto, carregarFotoMapa, enviarFotoMapa, removerFotoMapa, salvarAjusteFotoMapa } from '../lib/clinicaApi';
 import { FaceMapPoint, ProductType, InjectionDepth, InjectionTool } from '../types';
 import { AnatomicalOverlay, LandmarkDot } from './face-models/AnatomicalOverlay';
+import { CameraComPontos } from './CameraComPontos';
 import {
   Trash2,
   Shield,
@@ -14,6 +15,7 @@ import {
   Download,
   Search,
   SlidersHorizontal,
+  Camera,
   X
 } from 'lucide-react';
 
@@ -97,6 +99,7 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const [ajuste, setAjuste] = useState<AjusteFoto>(AJUSTE_PADRAO);
   const [ajustando, setAjustando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [cameraAberta, setCameraAberta] = useState(false);
   const quadroRef = useRef<HTMLDivElement>(null);
   const dedos = useRef(new Map<number, { x: number; y: number }>());
   const gesto = useRef<{ ajuste: AjusteFoto; dist: number; ang: number; cx: number; cy: number } | null>(null);
@@ -332,7 +335,11 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
+    if (file) await usarFoto(file, true);
+  };
+
+  // Salva a foto do paciente. Da câmera com pontos ela já vem encaixada; da galeria abre o ajuste.
+  const usarFoto = async (file: File, abrirAjuste: boolean) => {
     if (!pacienteId) {
       setCustomPhotoUrl(URL.createObjectURL(file));
     } else {
@@ -348,9 +355,9 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
       }
     }
     setAjuste(AJUSTE_PADRAO);
-    setModelOpacity(35);
-    setAjustando(true);
-    notify('Foto carregada. Ajuste a foto sobre o desenho.');
+    setModelOpacity(abrirAjuste ? 35 : 0);
+    setAjustando(abrirAjuste);
+    notify(abrirAjuste ? 'Foto carregada. Ajuste a foto sobre o desenho.' : 'Foto tirada com os pontos no lugar.');
   };
 
   const removerFoto = async () => {
@@ -693,6 +700,23 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
               <Upload className="w-3.5 h-3.5 text-[#2563EB]" />
               {enviandoFoto ? 'Enviando foto…' : customPhotoUrl ? 'Trocar Foto' : 'Foto do Paciente'}
             </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setCameraAberta(true)}
+                disabled={enviandoFoto}
+                className="px-2.5 py-1 bg-emerald-50 text-emerald-900 rounded-xl border border-emerald-200 font-semibold flex items-center gap-1.5 disabled:opacity-60"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                Câmera com pontos
+              </button>
+            )}
+            {cameraAberta && (
+              <CameraComPontos
+                onFechar={() => setCameraAberta(false)}
+                onFoto={(arq) => { setCameraAberta(false); usarFoto(arq, false); }}
+              />
+            )}
             {customPhotoUrl && (
               <button
                 type="button"
