@@ -61,6 +61,19 @@ const PRODUCT_COLORS: Record<ProductType, { bg: string; border: string; text: st
   }
 };
 
+// Contorno da face do modelo (public/face-feminina.jpg), em % da imagem: [y, x esquerdo, x direito].
+// Medido na própria imagem. De 15% (linha do cabelo) até 88% (pescoço).
+// Toque fora desse contorno não marca ponto. Com foto do paciente, a regra não vale.
+const CONTORNO_ROSTO: [number, number, number][] = [
+  [15, 21.4, 78.6], [16, 20.6, 79.4], [17, 20.0, 80.0], [18, 19.4, 80.5], [19, 19.0, 81.0], [20, 18.5, 81.4], [21, 18.1, 81.8], [22, 17.8, 82.1], [23, 17.6, 82.4], [24, 17.4, 82.6], [25, 17.2, 82.8], [26, 17.0, 82.9], [27, 16.9, 83.0], [28, 16.9, 83.1], [29, 16.8, 83.2], [30, 16.8, 83.2], [31, 16.8, 83.2], [32, 16.8, 83.1], [33, 16.9, 83.1], [34, 16.9, 83.0], [35, 17.0, 83.0], [36, 17.1, 82.9], [37, 17.3, 82.7], [38, 17.5, 82.5], [39, 15.1, 84.9], [40, 14.7, 85.3], [41, 14.6, 85.4], [42, 14.6, 85.4], [43, 14.7, 85.3], [44, 14.9, 85.1], [45, 15.2, 84.8], [46, 15.6, 84.4], [47, 15.8, 84.1], [48, 16.1, 83.9], [49, 16.4, 83.6], [50, 16.7, 83.3], [51, 17.1, 82.9], [52, 17.6, 82.3], [53, 18.2, 81.8], [54, 18.8, 81.2], [55, 19.4, 80.6], [56, 20.1, 79.9], [57, 21.5, 78.5], [58, 23.5, 76.5], [59, 23.8, 76.2], [60, 24.1, 75.9], [61, 24.3, 75.7], [62, 24.6, 75.4], [63, 24.9, 75.2], [64, 25.2, 74.8], [65, 25.6, 74.3], [66, 26.3, 73.7], [67, 27.1, 72.9], [68, 28.1, 71.9], [69, 29.0, 70.9], [70, 29.2, 70.8], [71, 29.4, 70.6], [72, 29.5, 70.5], [73, 29.6, 70.4], [74, 29.7, 70.3], [75, 29.7, 70.3], [76, 29.7, 70.3], [77, 29.7, 70.3], [78, 29.6, 70.4], [79, 30, 70], [80, 30, 70], [81, 30, 70], [82, 30, 70], [83, 30, 70], [84, 30, 70], [85, 30, 70], [86, 30, 70], [87, 30, 70], [88, 30, 70]
+];
+function dentroDoRosto(x: number, y: number): boolean {
+  const linha = CONTORNO_ROSTO.find(([yy]) => yy === Math.round(y));
+  if (!linha) return false;
+  const folga = 2; // tolerância para o dedo, em %
+  return x >= linha[1] - folga && x <= linha[2] + folga;
+}
+
 export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
   points = [],
   onChangePoints,
@@ -115,6 +128,12 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
     const rect = targetSvg.getBoundingClientRect();
     const x = Math.max(0, Math.min(100, Math.round(((clientX - rect.left) / rect.width) * 100)));
     const y = Math.max(0, Math.min(100, Math.round(((clientY - rect.top) / rect.height) * 100)));
+    const yExato = ((clientY - rect.top) / rect.height) * 100;
+    const xExato = ((clientX - rect.left) / rect.width) * 100;
+    if (!customPhotoUrl && !dentroDoRosto(xExato, yExato)) {
+      notify('Toque dentro do rosto para marcar o ponto.');
+      return;
+    }
 
     // Auto-detect approximate anatomical region name calibrated to 3:4 clinical face model
     let zoneName = "Ponto Facial";
@@ -203,12 +222,6 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
     addPointAtCoords(e.clientX, e.clientY, e.currentTarget);
   };
 
-  const handleFaceTouch = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (e.touches && e.touches.length > 0) {
-      const touch = e.touches[0];
-      addPointAtCoords(touch.clientX, touch.clientY, e.currentTarget);
-    }
-  };
 
   const handleUpdatePoint = (id: string, updates: Partial<FaceMapPoint>) => {
     const updated = safePoints.map(p => p.id === id ? { ...p, ...updates } : p);
@@ -678,7 +691,6 @@ export const FaceMapStudio: React.FC<FaceMapStudioProps> = ({
             preserveAspectRatio="none"
             className={`absolute inset-0 z-10 w-full h-full ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
             onClick={handleFaceClick}
-            onTouchStart={handleFaceTouch}
           >
             <defs>
               <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
