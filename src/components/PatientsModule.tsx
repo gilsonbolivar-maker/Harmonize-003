@@ -759,6 +759,22 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
                 </div>
 
                 <div>
+                  <label className="block font-medium text-[#0F172A] mb-1.5">Gênero *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['Feminino', 'Masculino', 'Outro'] as const).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, gender: g })}
+                        className={`py-2.5 rounded-2xl border font-semibold ${formData.gender === g ? 'bg-[#0F172A] text-white border-[#0F172A]' : 'bg-[#F8FAFC] text-[#0F172A] border-[#CBD5E1]'}`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <label className="block font-medium text-[#0F172A] mb-1.5">Tag / Categoria</label>
                   <select
                     value={formData.tag || 'novo'}
