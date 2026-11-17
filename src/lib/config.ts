@@ -1,6 +1,6 @@
 // Versão do app: aparece no canto inferior direito de todas as telas.
 // Suba o número a cada entrega, para saber qual versão o celular está mostrando.
-export const VERSAO = '1.3.0';
+export const VERSAO = '1.4.0';
 
 // Mesmos dados públicos do ClinicaMarcacao (config.js).
 // A chave é publicável: quem protege os dados são as regras de acesso do banco.

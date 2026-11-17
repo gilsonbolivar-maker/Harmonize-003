@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Trash2, X } from 'lucide-react';
+import { Camera, Grid3x3, Trash2, X } from 'lucide-react';
+import { CameraComPontos, GradeAvaliacao } from './CameraComPontos';
 import { FotoPaciente, apagarFoto, carregarFotos, enviarFoto } from '../lib/clinicaApi';
 import { dataCurta, hojeISO } from '../lib/datas';
 
@@ -33,6 +34,8 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
   const [antesId, setAntesId] = useState('');
   const [depoisId, setDepoisId] = useState('');
   const [divisor, setDivisor] = useState(50);
+  const [cameraAberta, setCameraAberta] = useState(false);
+  const [verLinhas, setVerLinhas] = useState(true);
   const entrada = useRef<HTMLInputElement>(null);
 
   const recarregar = async () => {
@@ -64,7 +67,10 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
   const escolherArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (!f) return;
+    if (f) prepararFoto(f);
+  };
+
+  const prepararFoto = (f: File) => {
     if (!f.type.startsWith('image/')) { alert('Escolha uma imagem (foto).'); return; }
     if (previa) URL.revokeObjectURL(previa);
     setArquivo(f);
@@ -116,15 +122,33 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
           <h4 className="font-serif italic text-xl text-[#0F172A]">Comparador Interativo Antes & Depois</h4>
           <p className="text-xs text-[#334155]">Arraste o divisor central para verificar a evolução e simetria do tratamento.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => entrada.current?.click()}
-          disabled={enviando}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#20364F] text-white text-xs font-medium rounded-full transition-colors shrink-0 disabled:opacity-60"
-        >
-          <Camera className="w-3.5 h-3.5" />
-          Adicionar Foto
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setCameraAberta(true)}
+            disabled={enviando}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#4A5D3A] text-white text-xs font-medium rounded-full disabled:opacity-60"
+          >
+            <Grid3x3 className="w-3.5 h-3.5" />
+            Câmera de avaliação
+          </button>
+          <button
+            type="button"
+            onClick={() => entrada.current?.click()}
+            disabled={enviando}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#20364F] text-white text-xs font-medium rounded-full transition-colors disabled:opacity-60"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            Adicionar Foto
+          </button>
+        </div>
+        {cameraAberta && (
+          <CameraComPontos
+            modo="avaliacao"
+            onFechar={() => setCameraAberta(false)}
+            onFoto={(f) => { setCameraAberta(false); prepararFoto(f); }}
+          />
+        )}
         <input ref={entrada} type="file" accept="image/*" className="hidden" onChange={escolherArquivo} />
       </div>
 
@@ -135,7 +159,10 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
             <p className="text-sm font-semibold text-[#5C4033]">Nova foto</p>
             <button type="button" onClick={cancelar} aria-label="Cancelar" className="p-1 text-[#5C4033]"><X className="w-4 h-4" /></button>
           </div>
-          <img src={previa} alt="Prévia da foto" className="w-full max-h-80 object-contain rounded-2xl bg-white" />
+          <div className="relative w-full max-w-xs mx-auto rounded-2xl overflow-hidden bg-white">
+            <img src={previa} alt="Prévia da foto" className="block w-full h-auto" />
+            {verLinhas && <GradeAvaliacao />}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {(['antes', 'depois'] as const).map((t) => (
               <button
@@ -204,6 +231,10 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
                   </select>
                 </label>
               </div>
+              <label className="flex items-center justify-end gap-2 text-xs text-[#334155]">
+                <input type="checkbox" checked={verLinhas} onChange={(e) => setVerLinhas(e.target.checked)} />
+                Mostrar linhas de avaliação
+              </label>
               <div className="relative w-full max-w-[560px] mx-auto rounded-3xl overflow-hidden bg-black select-none">
                 <img src={fotoDepois.url} alt="Depois" className="block w-full h-auto" draggable={false} />
                 <img
@@ -213,6 +244,7 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
                   style={{ clipPath: `inset(0 ${100 - divisor}% 0 0)` }}
                   draggable={false}
                 />
+                {verLinhas && <GradeAvaliacao />}
                 <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow" style={{ left: `${divisor}%` }} />
                 <span className="absolute top-3 left-3 text-[11px] font-bold uppercase bg-black/60 text-white px-2 py-1 rounded-full">Antes</span>
                 <span className="absolute top-3 right-3 text-[11px] font-bold uppercase bg-black/60 text-white px-2 py-1 rounded-full">Depois</span>

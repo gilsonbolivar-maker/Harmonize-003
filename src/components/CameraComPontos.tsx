@@ -5,12 +5,46 @@ import { ANATOMICAL_LANDMARKS } from './face-models/AnatomicalOverlay';
 interface Props {
   onFoto: (arquivo: File) => void;
   onFechar: () => void;
+  /** 'pontos' = desenho do rosto e pontos de injeção; 'avaliacao' = âncoras nos olhos e grade de linhas */
+  modo?: 'pontos' | 'avaliacao';
 }
+
+// Posição fixa das âncoras dos olhos, em % do quadro 3:4.
+// Toda foto tirada com os olhos nas âncoras fica no mesmo tamanho e lugar: dá para comparar.
+export const ANCORA_OLHOS = { y: 40, esquerdo: 37.5, direito: 62.5 };
+
+// Grade de avaliação: linhas a cada 10%, linha dos olhos e linha do meio em destaque,
+// e os dois alvos dos olhos. Usada na câmera e no comparador de fotos.
+export const GradeAvaliacao: React.FC<{ alvos?: boolean; forte?: boolean }> = ({ alvos = true, forte = false }) => {
+  const fino = forte ? 0.55 : 0.35;
+  return (
+    <svg viewBox="0 0 300 400" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
+      {Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((p) => (
+        <g key={p} stroke="#ffffff" strokeOpacity={fino} strokeWidth={0.6} vectorEffect="non-scaling-stroke">
+          <line x1={(p / 100) * 300} y1={0} x2={(p / 100) * 300} y2={400} vectorEffect="non-scaling-stroke" />
+          <line x1={0} y1={(p / 100) * 400} x2={300} y2={(p / 100) * 400} vectorEffect="non-scaling-stroke" />
+        </g>
+      ))}
+      {/* linha do meio do rosto */}
+      <line x1={150} y1={0} x2={150} y2={400} stroke="#22d3ee" strokeWidth={1.6} vectorEffect="non-scaling-stroke" strokeDasharray="6 4" />
+      {/* linha dos olhos */}
+      <line x1={0} y1={(ANCORA_OLHOS.y / 100) * 400} x2={300} y2={(ANCORA_OLHOS.y / 100) * 400} stroke="#facc15" strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+      {alvos && [ANCORA_OLHOS.esquerdo, ANCORA_OLHOS.direito].map((x) => (
+        <g key={x} stroke="#facc15" fill="none" strokeWidth={2} vectorEffect="non-scaling-stroke">
+          <ellipse cx={(x / 100) * 300} cy={(ANCORA_OLHOS.y / 100) * 400} rx={9} ry={6.75} vectorEffect="non-scaling-stroke" />
+          <line x1={(x / 100) * 300 - 14} y1={(ANCORA_OLHOS.y / 100) * 400} x2={(x / 100) * 300 + 14} y2={(ANCORA_OLHOS.y / 100) * 400} vectorEffect="non-scaling-stroke" />
+          <line x1={(x / 100) * 300} y1={(ANCORA_OLHOS.y / 100) * 400 - 11} x2={(x / 100) * 300} y2={(ANCORA_OLHOS.y / 100) * 400 + 11} vectorEffect="non-scaling-stroke" />
+        </g>
+      ))}
+    </svg>
+  );
+};
 
 // Câmera ao vivo com o desenho do rosto e os pontos por cima.
 // A pessoa encaixa o rosto do paciente no desenho e tira a foto:
 // a foto já sai no mesmo enquadramento (3:4) do mapa facial, com os pontos no lugar.
-export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar }) => {
+export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pontos' }) => {
+  const avaliacao = modo === 'avaliacao';
   const video = useRef<HTMLVideoElement>(null);
   const fluxo = useRef<MediaStream | null>(null);
   const [frente, setFrente] = useState(false); // false = câmera de trás (a Jimena fotografa o paciente)
@@ -75,7 +109,10 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar }) => {
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 text-white">
-        <p className="text-sm font-semibold">Encaixe o rosto no desenho</p>
+        <div>
+          <p className="text-sm font-semibold">{avaliacao ? 'Câmera de avaliação' : 'Encaixe o rosto no desenho'}</p>
+          {avaliacao && <p className="text-[11px] opacity-80">Centro de cada olho dentro de um alvo amarelo. Nariz na linha azul. Cabeça reta.</p>}
+        </div>
         <button type="button" onClick={onFechar} aria-label="Fechar câmera" className="p-2 rounded-full bg-white/15"><X className="w-5 h-5" /></button>
       </div>
 
@@ -89,16 +126,17 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar }) => {
             className="absolute inset-0 w-full h-full object-cover"
             style={{ transform: frente ? 'scaleX(-1)' : undefined }}
           />
+          {avaliacao && <GradeAvaliacao forte />}
           {/* Desenho do rosto como guia */}
-          <img
+          {!avaliacao && <img
             src={`${import.meta.env.BASE_URL}face-feminina.jpg`}
             alt=""
             draggable={false}
             className="absolute inset-0 w-full h-full object-fill pointer-events-none"
             style={{ opacity: guia / 100, mixBlendMode: 'multiply' }}
-          />
+          />}
           {/* Pontos de referência */}
-          {verPontos && ANATOMICAL_LANDMARKS.map((p) => (
+          {!avaliacao && verPontos && ANATOMICAL_LANDMARKS.map((p) => (
             <span
               key={p.id}
               className="absolute w-2.5 h-2.5 -ml-[5px] -mt-[5px] rounded-full border-2 border-white pointer-events-none"
@@ -115,13 +153,13 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar }) => {
       </div>
 
       <div className="px-4 py-3 space-y-3 text-white">
-        <div className="flex items-center gap-3 text-xs">
+        {!avaliacao && <div className="flex items-center gap-3 text-xs">
           <span className="w-20">Desenho</span>
           <input type="range" min={0} max={90} value={guia} onChange={(e) => setGuia(Number(e.target.value))} className="flex-1" />
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={verPontos} onChange={(e) => setVerPontos(e.target.checked)} /> Pontos
           </label>
-        </div>
+        </div>}
         <div className="flex items-center justify-between">
           <button type="button" onClick={() => setFrente(!frente)} className="px-3 py-2 rounded-full bg-white/15 text-xs font-semibold inline-flex items-center gap-1.5">
             <RefreshCw className="w-4 h-4" /> {frente ? 'Câmera de trás' : 'Câmera da frente'}
