@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Patient, FaceMapPoint, AnamnesisData, ClinicalRecord } from '../types';
 import { FaceMapStudio } from './FaceMapStudio';
+import { FotosPaciente } from './FotosPaciente';
 import { IA_ATIVA } from '../lib/config';
 import {
   Search, Plus, User, Phone, Mail, Calendar, MapPin, AlertTriangle,
@@ -585,32 +586,7 @@ export const PatientsModule: React.FC<PatientsModuleProps> = ({
             )}
 
             {/* TAB CONTENT: Fotos Antes & Depois */}
-            {activeTab === 'fotos' && (
-              <div className="bg-white p-6 rounded-3xl border border-[#CBD5E1] shadow-xs space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-serif italic text-xl text-[#0F172A]">
-                      Comparador Interativo Antes & Depois
-                    </h4>
-                    <p className="text-xs text-[#334155]">
-                      Arraste o divisor central para verificar a evolução e simetria do tratamento.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => alert("Upload de foto habilitado. Selecione arquivos PNG/JPEG da câmera ou galeria.")}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#20364F] text-white text-xs font-medium rounded-full transition-colors"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    Adicionar Foto
-                  </button>
-                </div>
-
-                <div className="rounded-3xl border border-[#E8D8C3] bg-[#F5EFE6] p-8 text-center text-sm text-[#5C4033]">
-                  Nenhuma foto registrada para este paciente.
-                </div>
-              </div>
-            )}
+            {activeTab === 'fotos' && <FotosPaciente pacienteId={selectedPatient.id} />}
 
             {/* TAB CONTENT: TCLE (Termo de Consentimento) */}
             {activeTab === 'tcle' && (

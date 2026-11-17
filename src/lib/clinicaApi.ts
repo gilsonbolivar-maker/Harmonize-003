@@ -477,3 +477,87 @@ export async function salvarFinanceiro(tx: FinancialTransaction): Promise<void> 
   });
   if (error) throw new Error(mensagemErro(error));
 }
+
+// ---------- Fotos antes e depois (só a Jimena vê) ----------
+export interface FotoPaciente {
+  id: string;
+  pacienteId: string;
+  caminho: string;
+  tipo: 'antes' | 'depois';
+  angulo: string;
+  data: string;
+  observacao: string | null;
+  url: string;
+}
+
+const BUCKET_FOTOS = 'clinica-fotos';
+
+export async function carregarFotos(pacienteId: string): Promise<FotoPaciente[]> {
+  const { data, error } = await supabase
+    .from('clinica_fotos')
+    .select('id,paciente_id,caminho,tipo,angulo,data,observacao')
+    .eq('paciente_id', pacienteId)
+    .order('data')
+    .order('criado_em');
+  if (error) throw new Error(mensagemErro(error));
+  const linhas = data || [];
+  if (!linhas.length) return [];
+  const { data: links, error: erroLinks } = await supabase.storage
+    .from(BUCKET_FOTOS)
+    .createSignedUrls(linhas.map((l) => l.caminho), 60 * 60);
+  if (erroLinks) throw new Error(mensagemErro(erroLinks));
+  const porCaminho = new Map((links || []).map((l) => [l.path, l.signedUrl]));
+  return linhas.map((l) => ({
+    id: l.id,
+    pacienteId: l.paciente_id,
+    caminho: l.caminho,
+    tipo: l.tipo,
+    angulo: l.angulo,
+    data: l.data,
+    observacao: l.observacao,
+    url: porCaminho.get(l.caminho) || '',
+  }));
+}
+
+// Reduz a foto do celular (que pode ter 5 MB ou mais) para no máximo 1600 px, em JPEG.
+async function reduzirFoto(arquivo: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(arquivo);
+  const escala = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * escala);
+  canvas.height = Math.round(bitmap.height * escala);
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return await new Promise<Blob>((ok, falha) =>
+    canvas.toBlob((b) => (b ? ok(b) : falha(new Error('Não consegui preparar a foto.'))), 'image/jpeg', 0.85),
+  );
+}
+
+export async function enviarFoto(
+  pacienteId: string,
+  arquivo: File,
+  dados: { tipo: 'antes' | 'depois'; angulo: string; data: string; observacao: string },
+): Promise<void> {
+  const blob = await reduzirFoto(arquivo);
+  const caminho = `${pacienteId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const { error } = await supabase.storage.from(BUCKET_FOTOS).upload(caminho, blob, { contentType: 'image/jpeg' });
+  if (error) throw new Error(mensagemErro(error));
+  const { error: erroLinha } = await supabase.from('clinica_fotos').insert({
+    paciente_id: pacienteId,
+    caminho,
+    tipo: dados.tipo,
+    angulo: dados.angulo,
+    data: dados.data,
+    observacao: dados.observacao.trim() || null,
+  });
+  if (erroLinha) {
+    await supabase.storage.from(BUCKET_FOTOS).remove([caminho]);
+    throw new Error(mensagemErro(erroLinha));
+  }
+}
+
+export async function apagarFoto(foto: FotoPaciente): Promise<void> {
+  const { error } = await supabase.from('clinica_fotos').delete().eq('id', foto.id);
+  if (error) throw new Error(mensagemErro(error));
+  await supabase.storage.from(BUCKET_FOTOS).remove([foto.caminho]);
+}
