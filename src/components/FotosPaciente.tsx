@@ -37,6 +37,12 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
   const [cameraAberta, setCameraAberta] = useState(false);
   const [verLinhas, setVerLinhas] = useState(true);
   const entrada = useRef<HTMLInputElement>(null);
+  const blocoNova = useRef<HTMLDivElement>(null);
+
+  // Quando chega uma foto nova, rola a tela até o quadro de salvar
+  useEffect(() => {
+    if (previa) setTimeout(() => blocoNova.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [previa]);
 
   const recarregar = async () => {
     setCarregando(true);
@@ -154,9 +160,9 @@ export const FotosPaciente: React.FC<Props> = ({ pacienteId }) => {
 
       {/* Nova foto: confirmar antes de salvar */}
       {previa && (
-        <div className="rounded-3xl border border-[#E8D8C3] bg-[#F5EFE6] p-4 space-y-3">
+        <div ref={blocoNova} className="rounded-3xl border-2 border-[#4A5D3A] bg-[#F5EFE6] p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-[#5C4033]">Nova foto</p>
+            <p className="text-sm font-semibold text-[#5C4033]">Nova foto: escolha Antes ou Depois e toque em Salvar</p>
             <button type="button" onClick={cancelar} aria-label="Cancelar" className="p-1 text-[#5C4033]"><X className="w-4 h-4" /></button>
           </div>
           <div className="relative w-full max-w-xs mx-auto rounded-2xl overflow-hidden bg-white">

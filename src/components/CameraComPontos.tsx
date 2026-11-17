@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Camera, Check, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { ANATOMICAL_LANDMARKS } from './face-models/AnatomicalOverlay';
 
 interface Props {
@@ -52,6 +53,8 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
   const [pronta, setPronta] = useState(false);
   const [guia, setGuia] = useState(45);
   const [verPontos, setVerPontos] = useState(true);
+  const [tirada, setTirada] = useState<{ arquivo: File; url: string } | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     let vivo = true;
@@ -80,13 +83,13 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
     };
     abrir();
     return () => { vivo = false; };
-  }, [frente]);
+  }, [frente, tentativa]);
 
   useEffect(() => () => fluxo.current?.getTracks().forEach((t) => t.stop()), []);
 
   const tirar = () => {
     const v = video.current;
-    if (!v || !v.videoWidth) return;
+    if (!v || !v.videoWidth) { setErro('A câmera ainda não está pronta. Espere a imagem aparecer e toque de novo.'); return; }
     // Recorta o centro do vídeo no formato 3:4, igual ao que aparece na tela
     const vw = v.videoWidth, vh = v.videoHeight;
     let sw = vw, sh = vh, sx = 0, sy = 0;
@@ -99,15 +102,39 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
     const ctx = c.getContext('2d')!;
     if (frente) { ctx.translate(larg, 0); ctx.scale(-1, 1); } // a frontal aparece espelhada; a foto sai como a tela mostra
     ctx.drawImage(v, sx, sy, sw, sh, 0, 0, larg, alt);
-    c.toBlob((b) => {
-      if (!b) return;
+    const entregar = (b: Blob) => {
       fluxo.current?.getTracks().forEach((t) => t.stop());
-      onFoto(new File([b], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' }));
-    }, 'image/jpeg', 0.9);
+      const arquivo = new File([b], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setTirada({ arquivo, url: URL.createObjectURL(b) }); // mostra a foto para conferir antes de usar
+    };
+    try {
+      c.toBlob((b) => {
+        if (b) { entregar(b); return; }
+        // Alguns iPads devolvem vazio no toBlob: monta a imagem pelo dataURL
+        const dados = c.toDataURL('image/jpeg', 0.9);
+        const bin = atob(dados.split(',')[1]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        entregar(new Blob([bytes], { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.9);
+    } catch {
+      setErro('Não consegui registrar a foto. Tente de novo.');
+    }
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+  const tirarOutra = () => {
+    if (tirada) URL.revokeObjectURL(tirada.url);
+    setTirada(null);
+    setTentativa((n) => n + 1);
+  };
+  const usar = () => {
+    if (!tirada) return;
+    onFoto(tirada.arquivo);
+  };
+
+  // Desenhada direto no corpo da página, para nada da tela de trás interferir
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 text-white">
         <div>
           <p className="text-sm font-semibold">{avaliacao ? 'Câmera de avaliação' : 'Encaixe o rosto no desenho'}</p>
@@ -146,7 +173,13 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
           {!pronta && !erro && (
             <p className="absolute inset-0 flex items-center justify-center text-white text-sm">Abrindo a câmera…</p>
           )}
-          {erro && (
+          {tirada && (
+            <div className="absolute inset-0">
+              <img src={tirada.url} alt="Foto tirada" className="absolute inset-0 w-full h-full object-cover" />
+              {avaliacao && <GradeAvaliacao />}
+            </div>
+          )}
+          {erro && !tirada && (
             <p className="absolute inset-0 flex items-center justify-center text-center text-white text-sm p-6">{erro}</p>
           )}
         </div>
@@ -160,6 +193,16 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
             <input type="checkbox" checked={verPontos} onChange={(e) => setVerPontos(e.target.checked)} /> Pontos
           </label>
         </div>}
+        {tirada ? (
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={tirarOutra} className="flex-1 py-3 rounded-full bg-white/15 text-sm font-semibold inline-flex items-center justify-center gap-2">
+              <RotateCcw className="w-4 h-4" /> Tirar outra
+            </button>
+            <button type="button" onClick={usar} className="flex-1 py-3 rounded-full bg-emerald-500 text-white text-sm font-bold inline-flex items-center justify-center gap-2">
+              <Check className="w-5 h-5" /> Usar esta foto
+            </button>
+          </div>
+        ) : (
         <div className="flex items-center justify-between">
           <button type="button" onClick={() => setFrente(!frente)} className="px-3 py-2 rounded-full bg-white/15 text-xs font-semibold inline-flex items-center gap-1.5">
             <RefreshCw className="w-4 h-4" /> {frente ? 'Câmera de trás' : 'Câmera da frente'}
@@ -175,7 +218,9 @@ export const CameraComPontos: React.FC<Props> = ({ onFoto, onFechar, modo = 'pon
           </button>
           <span className="w-[118px]" />
         </div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
