@@ -1,0 +1,14 @@
+# Publicação do Harmonize no Netlify.
+# Só a parte visual (Vite). O servidor Express (server.ts) não roda aqui.
+[build]
+  command = "npx vite build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# App de página única: qualquer endereço abre o index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
